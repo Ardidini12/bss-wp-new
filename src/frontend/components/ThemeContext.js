@@ -1,64 +1,136 @@
-import React, { createContext, useState, useEffect, useContext } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import { extractColors, generateColorScheme } from '../utils/colorUtils';
+import { getAsset } from '../utils/assetUtils';
 
-// Create theme context
+// Define default theme colors in case we can't extract from logo
+const defaultColors = {
+  primary: '#3366cc', // A blue shade
+  primaryLight: '#5c85d6',
+  primaryDark: '#244c99',
+  secondary: '#ff9900', // Orange accent
+  secondaryLight: '#ffb13d',
+  secondaryDark: '#cc7a00',
+  accent: '#33cc99', // Teal accent
+  textOnPrimary: '#ffffff',
+  textOnSecondary: '#000000',
+};
+
+// Create the theme context
 const ThemeContext = createContext();
 
 export const useTheme = () => useContext(ThemeContext);
 
 export const ThemeProvider = ({ children }) => {
-  const [theme, setTheme] = useState('system');
+  const [theme, setTheme] = useState('light');
+  const [isLoading, setIsLoading] = useState(true);
+  const [colors, setColors] = useState(defaultColors);
+  const [animations, setAnimations] = useState({
+    enabled: true,
+    speed: 'normal', // slow, normal, fast
+  });
 
-  // Load theme on mount
+  // Load the user's theme preference from electron-store
   useEffect(() => {
     const loadTheme = async () => {
       try {
-        const savedTheme = localStorage.getItem('app_theme');
-        if (savedTheme) {
-          setTheme(savedTheme);
-          await applyTheme(savedTheme);
+        // Get theme from electron-store via IPC
+        const response = await window.electronAPI.getTheme();
+        if (response.success) {
+          setTheme(response.theme);
         }
-      } catch (err) {
-        console.error('Error loading theme:', err);
+      } catch (error) {
+        console.error('Failed to load theme:', error);
       }
     };
 
     loadTheme();
   }, []);
 
-  // Apply theme to body classes and electron
-  const applyTheme = async (newTheme) => {
-    // Apply to electron
-    await window.electronAPI.setTheme(newTheme);
-    
-    // Apply to body classes
-    const body = document.body;
-    body.classList.remove('light-theme', 'dark-theme');
-    
-    if (newTheme === 'light') {
-      body.classList.add('light-theme');
-    } else if (newTheme === 'dark') {
-      body.classList.add('dark-theme');
-    } else {
-      // For system theme, use media query to determine
-      if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-        body.classList.add('dark-theme');
-      } else {
-        body.classList.add('light-theme');
+  // Extract colors from the logo
+  useEffect(() => {
+    const loadLogoColors = async () => {
+      setIsLoading(true);
+      try {
+        // Use the imported logo
+        const logoUrl = getAsset('Logo-BSS');
+        const { dominantColor, palette } = await extractColors(logoUrl);
+        const generatedColors = generateColorScheme(dominantColor, palette);
+        setColors(generatedColors);
+      } catch (error) {
+        console.error('Failed to extract colors from logo:', error);
+        // Fall back to default colors
+        setColors(defaultColors);
+      } finally {
+        setIsLoading(false);
       }
-    }
-  };
+    };
 
-  // Change theme
-  const changeTheme = async (newTheme) => {
+    loadLogoColors();
+  }, []);
+
+  // Apply theme to body element
+  useEffect(() => {
+    document.body.classList.remove('light-theme', 'dark-theme');
+    document.body.classList.add(`${theme}-theme`);
+    
+    // Apply CSS variables for theme colors
+    const root = document.documentElement;
+    
+    // Set color variables
+    Object.entries(colors).forEach(([key, value]) => {
+      root.style.setProperty(`--color-${key}`, value);
+    });
+    
+    // Set animation variables
+    const speeds = {
+      slow: '0.5s',
+      normal: '0.3s',
+      fast: '0.15s'
+    };
+    
+    root.style.setProperty('--transition-speed', speeds[animations.speed]);
+    root.style.setProperty('--animations-enabled', animations.enabled ? '1' : '0');
+    
+    // Call to backend to save theme choice
+    window.electronAPI.setTheme(theme);
+  }, [theme, colors, animations]);
+
+  // Function to change the theme
+  const changeTheme = (newTheme) => {
     setTheme(newTheme);
-    localStorage.setItem('app_theme', newTheme);
-    await applyTheme(newTheme);
+  };
+  
+  // Toggle animations
+  const toggleAnimations = () => {
+    setAnimations(prev => ({
+      ...prev,
+      enabled: !prev.enabled
+    }));
+  };
+  
+  // Change animation speed
+  const setAnimationSpeed = (speed) => {
+    setAnimations(prev => ({
+      ...prev,
+      speed
+    }));
   };
 
-  const value = {
-    theme,
-    changeTheme
-  };
+  return (
+    <ThemeContext.Provider value={{ 
+      theme, 
+      changeTheme, 
+      colors, 
+      isLoading,
+      animations: {
+        ...animations,
+        toggle: toggleAnimations,
+        setSpeed: setAnimationSpeed
+      }
+    }}>
+      {children}
+    </ThemeContext.Provider>
+  );
+};
 
-  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
-}; 
+export default ThemeContext; 

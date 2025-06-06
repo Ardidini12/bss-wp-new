@@ -1,12 +1,47 @@
 @import 'bootstrap/dist/css/bootstrap.min.css';
 
+:root {
+  /* Default colors - will be overridden by JS when logo colors are extracted */
+  --color-primary: #3366cc;
+  --color-primaryLight: #5c85d6;
+  --color-primaryDark: #244c99;
+  --color-secondary: #ff9900;
+  --color-secondaryLight: #ffb13d;
+  --color-secondaryDark: #cc7a00;
+  --color-accent: #33cc99;
+  --color-textOnPrimary: #ffffff;
+  --color-textOnSecondary: #000000;
+  
+  /* Light theme colors */
+  --color-background-light: #f8f9fa;
+  --color-surface-light: #ffffff;
+  --color-text-light: #212529;
+  --color-border-light: #dee2e6;
+  
+  /* Dark theme colors */
+  --color-background-dark: #212529;
+  --color-surface-dark: #343a40;
+  --color-text-dark: #f8f9fa;
+  --color-border-dark: #495057;
+  
+  /* Animation properties */
+  --transition-speed: 0.3s;
+  --animations-enabled: 1;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica,
-    Arial, sans-serif;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   margin: 0;
   padding: 0;
   height: 100vh;
   overflow: hidden;
+  transition: background-color var(--transition-speed) ease, color var(--transition-speed) ease;
 }
 
 #root {
@@ -15,30 +50,247 @@ body {
 
 /* Theme classes */
 body.light-theme {
-  background-color: #ffffff;
-  color: #212529;
+  background-color: var(--color-background-light);
+  color: var(--color-text-light);
 }
 
 body.dark-theme {
-  background-color: #212529;
-  color: #f8f9fa;
+  background-color: var(--color-background-dark);
+  color: var(--color-text-dark);
+}
+
+/* Custom elements styling */
+.btn-primary {
+  background-color: var(--color-primary);
+  border-color: var(--color-primaryDark);
+  color: var(--color-textOnPrimary);
+  transition: all var(--transition-speed) ease;
+}
+
+.btn-primary:hover {
+  background-color: var(--color-primaryDark);
+  border-color: var(--color-primaryDark);
+  transform: scale(1.03);
+}
+
+.btn-secondary {
+  background-color: var(--color-secondary);
+  border-color: var(--color-secondaryDark);
+  color: var(--color-textOnSecondary);
+  transition: all var(--transition-speed) ease;
+}
+
+.btn-secondary:hover {
+  background-color: var(--color-secondaryDark);
+  border-color: var(--color-secondaryDark);
+  transform: scale(1.03);
+}
+
+.card {
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  transition: all var(--transition-speed) ease;
+}
+
+.card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 12px 20px rgba(0, 0, 0, 0.2);
+}
+
+/* Theme-specific components */
+body.light-theme .card {
+  background-color: var(--color-surface-light);
+  color: var(--color-text-light);
+  border-color: var(--color-border-light);
 }
 
 body.dark-theme .card {
-  background-color: #343a40;
-  color: #f8f9fa;
+  background-color: var(--color-surface-dark);
+  color: var(--color-text-dark);
+  border-color: var(--color-border-dark);
+}
+
+body.light-theme .form-control,
+body.light-theme .form-select {
+  background-color: var(--color-surface-light);
+  color: var(--color-text-light);
+  border-color: var(--color-border-light);
+  transition: all var(--transition-speed) ease;
 }
 
 body.dark-theme .form-control,
 body.dark-theme .form-select {
-  background-color: #343a40;
-  color: #f8f9fa;
-  border-color: #495057;
+  background-color: var(--color-surface-dark);
+  color: var(--color-text-dark);
+  border-color: var(--color-border-dark);
+  transition: all var(--transition-speed) ease;
 }
 
-body.dark-theme .btn-outline-secondary {
-  color: #f8f9fa;
-  border-color: #6c757d;
+/* Input focus effect */
+.form-control:focus,
+.form-select:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 0.25rem rgba(var(--color-primary-rgb), 0.25);
+  transform: scale(1.01);
+}
+
+/* Custom toggle switch */
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 50px;
+  height: 24px;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #ccc;
+  border-radius: 24px;
+  transition: var(--transition-speed);
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  border-radius: 50%;
+  transition: var(--transition-speed);
+}
+
+input:checked + .slider {
+  background-color: var(--color-primary);
+}
+
+input:focus + .slider {
+  box-shadow: 0 0 1px var(--color-primary);
+}
+
+input:checked + .slider:before {
+  transform: translateX(26px);
+}
+
+/* Custom title bar */
+.title-bar {
+  -webkit-app-region: drag;
+  background-color: var(--color-primary);
+  color: var(--color-textOnPrimary);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 16px;
+  height: 38px;
+}
+
+.title-bar-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.title-bar-controls {
+  -webkit-app-region: no-drag;
+  display: flex;
+  gap: 8px;
+}
+
+.title-bar-button {
+  border: none;
+  background: transparent;
+  color: var(--color-textOnPrimary);
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color var(--transition-speed) ease;
+}
+
+.title-bar-button:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+.title-bar-button.close:hover {
+  background-color: #e81123;
+}
+
+/* App logo animation */
+.app-logo {
+  transition: all var(--transition-speed) ease;
+}
+
+.app-logo:hover {
+  transform: rotate(5deg) scale(1.1);
+}
+
+/* Splash screen */
+.splash-screen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  background-color: var(--color-primary);
+  z-index: 1000;
+  transition: opacity 0.5s ease;
+}
+
+.splash-logo {
+  width: 150px;
+  height: auto;
+  margin-bottom: 20px;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.splash-spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  border-top-color: white;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
 /* Auth pages */
@@ -46,30 +298,46 @@ body.dark-theme .btn-outline-secondary {
   display: flex;
   justify-content: center;
   align-items: center;
-  height: 100vh;
+  height: calc(100vh - 38px); /* Adjusted for titlebar height */
+  padding: 20px;
 }
 
 .auth-form {
   width: 100%;
   max-width: 400px;
-  padding: 20px;
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  padding: 30px;
+  border-radius: 10px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+  transition: all var(--transition-speed) ease;
+}
+
+.auth-form:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 12px 25px rgba(0, 0, 0, 0.2);
+}
+
+.auth-logo {
+  display: block;
+  width: 100px;
+  height: auto;
+  margin: 0 auto 20px;
 }
 
 /* Dashboard */
 .dashboard-container {
-  height: 100vh;
+  height: calc(100vh - 38px); /* Adjusted for titlebar height */
   display: flex;
   flex-direction: column;
 }
 
 .dashboard-header {
-  padding: 15px;
+  padding: 15px 20px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 1px solid #dee2e6;
+  border-bottom: 1px solid;
+  border-color: inherit;
+  transition: border-color var(--transition-speed) ease;
 }
 
 .dashboard-content {
@@ -82,4 +350,13 @@ body.dark-theme .btn-outline-secondary {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+/* Animation control checkbox */
+.animation-toggle {
+  margin-right: 15px;
+}
+
+.animation-speed-selector {
+  min-width: 100px;
 }

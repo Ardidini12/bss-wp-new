@@ -6,6 +6,7 @@ const {
   updateUserSettings,
   verifyToken
 } = require('./db');
+const { getAppTheme, setAppTheme, getAnimationPrefs, setAnimationPrefs } = require('./store');
 
 // Initialize API
 function initApi() {
@@ -58,6 +59,26 @@ function initApi() {
     try {
       await updateUserSettings(userId, settings);
       return { success: true };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+  
+  // Get theme from settings
+  ipcMain.handle('get-theme', async (event) => {
+    try {
+      const theme = getAppTheme();
+      return { success: true, theme };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+  
+  // Get animation preferences
+  ipcMain.handle('get-animation-prefs', async (event) => {
+    try {
+      const prefs = getAnimationPrefs();
+      return { success: true, prefs };
     } catch (error) {
       return { success: false, error: error.message };
     }

@@ -1,15 +1,20 @@
 const { FusesPlugin } = require('@electron-forge/plugin-fuses');
 const { FuseV1Options, FuseVersion } = require('@electron/fuses');
+const path = require('path');
 
 module.exports = {
   packagerConfig: {
     asar: true,
+    icon: path.resolve(__dirname, 'src/assets/Logo-BSS'), // No extension needed, Electron will use the right one per platform
   },
   rebuildConfig: {},
   makers: [
     {
       name: '@electron-forge/maker-squirrel',
-      config: {},
+      config: {
+        iconUrl: path.resolve(__dirname, 'src/assets/Logo-BSS.webp'),
+        setupIcon: path.resolve(__dirname, 'src/assets/Logo-BSS.webp'),
+      },
     },
     {
       name: '@electron-forge/maker-zip',
@@ -17,11 +22,19 @@ module.exports = {
     },
     {
       name: '@electron-forge/maker-deb',
-      config: {},
+      config: {
+        options: {
+          icon: path.resolve(__dirname, 'src/assets/Logo-BSS.webp'),
+        },
+      },
     },
     {
       name: '@electron-forge/maker-rpm',
-      config: {},
+      config: {
+        options: {
+          icon: path.resolve(__dirname, 'src/assets/Logo-BSS.webp'),
+        },
+      },
     },
   ],
   plugins: [

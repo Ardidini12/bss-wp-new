@@ -17,7 +17,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // Theme API
   setTheme: (theme) => ipcRenderer.invoke('set-theme', theme),
+  getTheme: () => ipcRenderer.invoke('get-theme'),
+  
+  // App control
+  minimizeApp: () => ipcRenderer.invoke('minimize-app'),
+  maximizeApp: () => ipcRenderer.invoke('maximize-app'),
+  closeApp: () => ipcRenderer.invoke('close-app'),
   
   // System info
-  getPlatform: () => process.platform
+  getPlatform: () => process.platform,
+  
+  // Get app version
+  getAppVersion: () => ipcRenderer.invoke('get-app-version')
 });

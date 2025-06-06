@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../components/AuthContext';
+import { useTheme } from '../components/ThemeContext';
+import { getAsset } from '../utils/assetUtils';
 
 const Register = () => {
   const [username, setUsername] = useState('');
@@ -9,6 +11,7 @@ const Register = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [validationError, setValidationError] = useState('');
   const { register, error, currentUser } = useAuth();
+  const { colors, animations } = useTheme();
   const navigate = useNavigate();
 
   // If user is already logged in, redirect to dashboard
@@ -18,25 +21,26 @@ const Register = () => {
     }
   }, [currentUser, navigate]);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    
-    // Clear previous errors
-    setValidationError('');
-    
-    // Validate input
-    if (!username || !password || !confirmPassword) {
-      setValidationError('All fields are required');
-      return;
-    }
-    
+  // Form validation
+  const validateForm = () => {
     if (password !== confirmPassword) {
       setValidationError('Passwords do not match');
-      return;
+      return false;
     }
     
     if (password.length < 6) {
       setValidationError('Password must be at least 6 characters');
+      return false;
+    }
+    
+    setValidationError('');
+    return true;
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    if (!validateForm()) {
       return;
     }
     
@@ -45,21 +49,54 @@ const Register = () => {
     try {
       const success = await register(username, password);
       if (success) {
-        navigate('/login');
+        navigate('/dashboard');
       }
     } finally {
       setIsLoading(false);
     }
   };
 
+  // Animation style for the card
+  const cardStyle = animations.enabled ? {
+    transform: 'translateY(0)',
+    opacity: 1,
+    transition: `all ${animations.speed}s ease`
+  } : {};
+  
+  // Initial load animation
+  useEffect(() => {
+    if (animations.enabled) {
+      const element = document.getElementById('register-card');
+      if (element) {
+        element.style.transform = 'translateY(20px)';
+        element.style.opacity = '0';
+        
+        setTimeout(() => {
+          element.style.transform = 'translateY(0)';
+          element.style.opacity = '1';
+        }, 100);
+      }
+    }
+  }, [animations.enabled]);
+
   return (
     <div className="auth-container">
-      <div className="auth-form card">
-        <h2 className="text-center mb-4">Register for BSS</h2>
+      <div 
+        id="register-card"
+        className="auth-form card"
+        style={cardStyle}
+      >
+        <img 
+          src={getAsset('Logo-BSS')} 
+          alt="BSS Logo" 
+          className="auth-logo app-logo" 
+        />
+        
+        <h2 className="text-center mb-4" style={{ color: colors.primary }}>Create BSS Account</h2>
         
         {(error || validationError) && (
           <div className="alert alert-danger" role="alert">
-            {validationError || error}
+            {error || validationError}
           </div>
         )}
         
@@ -102,14 +139,24 @@ const Register = () => {
           
           <button
             type="submit"
-            className="btn btn-primary w-100 mb-3"
+            className="btn w-100 mb-3"
             disabled={isLoading}
+            style={{ 
+              backgroundColor: colors.primary, 
+              borderColor: colors.primaryDark,
+              color: colors.textOnPrimary 
+            }}
           >
-            {isLoading ? 'Registering...' : 'Register'}
+            {isLoading ? (
+              <span>
+                <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                Registering...
+              </span>
+            ) : 'Register'}
           </button>
           
           <p className="text-center">
-            Already have an account? <Link to="/login">Login</Link>
+            Already have an account? <Link to="/login" style={{ color: colors.secondary }}>Login</Link>
           </p>
         </form>
       </div>

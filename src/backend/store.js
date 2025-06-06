@@ -17,7 +17,11 @@ const sessionStore = new Store({
 const settingsStore = new Store({
   name: 'app-settings',
   defaults: {
-    theme: 'system' // Default theme
+    theme: 'system', // Default theme
+    animations: {
+      enabled: true,
+      speed: 'normal'
+    }
   }
 });
 
@@ -52,13 +56,23 @@ function getActiveSession() {
 }
 
 // Save app theme
-function saveAppTheme(theme) {
+function setAppTheme(theme) {
   settingsStore.set('theme', theme);
 }
 
 // Get app theme
 function getAppTheme() {
   return settingsStore.get('theme');
+}
+
+// Set animation preferences
+function setAnimationPrefs(prefs) {
+  settingsStore.set('animations', prefs);
+}
+
+// Get animation preferences
+function getAnimationPrefs() {
+  return settingsStore.get('animations');
 }
 
 module.exports = {
@@ -68,6 +82,8 @@ module.exports = {
   saveSession,
   clearSession,
   getActiveSession,
-  saveAppTheme,
-  getAppTheme
+  setAppTheme,
+  getAppTheme,
+  setAnimationPrefs,
+  getAnimationPrefs
 }; 

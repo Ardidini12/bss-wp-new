@@ -27,7 +27,7 @@
  */
 
 import './index.css';
-import React from 'react';
+import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 
@@ -37,31 +37,49 @@ import { ThemeProvider } from './frontend/components/ThemeContext';
 
 // Import components
 import ProtectedRoute from './frontend/components/ProtectedRoute';
+import TitleBar from './frontend/components/TitleBar';
+import SplashScreen from './frontend/components/SplashScreen';
 
 // Import pages
 import Login from './frontend/pages/Login';
 import Register from './frontend/pages/Register';
 import Dashboard from './frontend/pages/Dashboard';
 
+// Main App component
+const App = () => {
+  const [showSplash, setShowSplash] = useState(true);
+  
+  const handleSplashFinish = () => {
+    setShowSplash(false);
+  };
+  
+  return (
+    <AuthProvider>
+      <ThemeProvider>
+        {showSplash && <SplashScreen onFinish={handleSplashFinish} />}
+        
+        <div style={{ visibility: showSplash ? 'hidden' : 'visible', height: '100vh' }}>
+          <TitleBar />
+          
+          <Router>
+            <Routes>
+              <Route path="/login" element={<Login />} />
+              <Route path="/register" element={<Register />} />
+              <Route path="/dashboard" element={
+                <ProtectedRoute>
+                  <Dashboard />
+                </ProtectedRoute>
+              } />
+              <Route path="*" element={<Navigate to="/login" replace />} />
+            </Routes>
+          </Router>
+        </div>
+      </ThemeProvider>
+    </AuthProvider>
+  );
+};
+
 // Initialize React app
 const container = document.getElementById('root');
 const root = createRoot(container);
-
-root.render(
-  <AuthProvider>
-    <ThemeProvider>
-      <Router>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="/dashboard" element={
-            <ProtectedRoute>
-              <Dashboard />
-            </ProtectedRoute>
-          } />
-          <Route path="*" element={<Navigate to="/login" replace />} />
-        </Routes>
-      </Router>
-    </ThemeProvider>
-  </AuthProvider>
-);
+root.render(<App />);
