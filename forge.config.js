@@ -6,8 +6,16 @@ module.exports = {
   packagerConfig: {
     asar: true,
     icon: path.resolve(__dirname, 'src/assets/Logo-BSS'), // No extension needed, Electron will use the right one per platform
+    extraResource: [
+      // Include necessary resources for WhatsApp Web.js
+      './node_modules/puppeteer/.local-chromium'
+    ]
   },
-  rebuildConfig: {},
+  rebuildConfig: {
+    // Native module rebuild configuration
+    forceRebuild: true,
+    onlyModules: ['puppeteer', 'whatsapp-web.js']
+  },
   makers: [
     {
       name: '@electron-forge/maker-squirrel',
@@ -59,6 +67,8 @@ module.exports = {
             },
           ],
         },
+        // Disable Content Security Policy completely
+        devContentSecurityPolicy: ""
       },
     },
     // Fuses are used to enable/disable various Electron functionality

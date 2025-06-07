@@ -90,3 +90,9 @@ typings/
 
 # Electron-Forge
 out/
+
+# Whatsapp cache
+.wwebjs_cache
+# WhatsApp Web.js directory
+whatsapp-web.js/
+

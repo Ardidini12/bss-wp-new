@@ -2,13 +2,17 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../components/AuthContext';
 import { useTheme } from '../components/ThemeContext';
+import ThemeToggle from '../components/ThemeToggle';
+import Settings from '../components/Settings';
+import WhatsAppContact from '../components/WhatsAppContact';
 import { getAsset } from '../utils/assetUtils';
 
 const Dashboard = () => {
   const { currentUser, logout, loading } = useAuth();
-  const { theme, changeTheme, colors, animations } = useTheme();
+  const { theme, colors, animations } = useTheme();
   const navigate = useNavigate();
   const [userSettings, setUserSettings] = useState(null);
+  const [activeView, setActiveView] = useState('dashboard');
 
   // Redirect if not logged in
   useEffect(() => {
@@ -35,19 +39,33 @@ const Dashboard = () => {
     loadSettings();
   }, [currentUser]);
 
+  // Initialize WhatsApp when user logs in
+  useEffect(() => {
+    if (currentUser) {
+      // Initialize WhatsApp for current user
+      window.electronAPI.initWhatsApp(currentUser.id)
+        .catch(err => console.error('Error initializing WhatsApp:', err));
+    }
+  }, [currentUser]);
+  
+  // Listen for dashboard state changes from WhatsAppContact
+  useEffect(() => {
+    const handleViewChange = (event) => {
+      if (event.detail && event.detail.view) {
+        setActiveView(event.detail.view);
+      }
+    };
+    
+    window.addEventListener('dashboard-set-active-view', handleViewChange);
+    
+    return () => {
+      window.removeEventListener('dashboard-set-active-view', handleViewChange);
+    };
+  }, []);
+
   const handleLogout = () => {
     logout();
     navigate('/login');
-  };
-
-  const handleThemeChange = (newTheme) => {
-    changeTheme(newTheme);
-    
-    // Update user settings if logged in
-    if (currentUser && userSettings) {
-      const updatedSettings = { ...userSettings, theme: newTheme };
-      window.electronAPI.updateUserSettings(currentUser.id, updatedSettings);
-    }
   };
 
   // Card animation style
@@ -71,7 +89,7 @@ const Dashboard = () => {
         }, 100 + (index * 100)); // Stagger the animations
       });
     }
-  }, [animations.enabled]);
+  }, [animations.enabled, activeView]);
 
   if (loading || !currentUser) {
     return (
@@ -85,6 +103,9 @@ const Dashboard = () => {
 
   return (
     <div className="dashboard-container">
+      {/* WhatsApp Contact Info (Draggable) - Now positioned independently */}
+      <WhatsAppContact />
+      
       <div 
         className="dashboard-header"
         style={{ borderColor: theme === 'dark' ? colors.primaryDark : colors.primaryLight }}
@@ -100,25 +121,10 @@ const Dashboard = () => {
         </div>
         
         <div className="d-flex">
-          <div className="theme-toggle me-3">
-            <label className="me-2">Theme:</label>
-            <select 
-              className="form-select form-select-sm" 
-              value={theme}
-              onChange={(e) => handleThemeChange(e.target.value)}
-              style={{ 
-                borderColor: colors.primary,
-                minWidth: '100px'
-              }}
-            >
-              <option value="light">Light</option>
-              <option value="dark">Dark</option>
-              <option value="system">System</option>
-            </select>
-          </div>
+          <ThemeToggle />
           
           <button 
-            className="btn btn-sm"
+            className="btn btn-sm ms-3"
             onClick={handleLogout}
             style={{ 
               backgroundColor: colors.secondary,
@@ -131,16 +137,59 @@ const Dashboard = () => {
         </div>
       </div>
       
-      <div className="dashboard-content p-4">
-        <div className="card dashboard-card" style={cardStyle}>
-          <div className="card-body">
-            <h2 className="card-title" style={{ color: colors.primary }}>
-              Welcome, {currentUser.username}!
-            </h2>
-            <p className="card-text">
-              You have successfully logged in to the BSS Desktop Application.
-            </p>
-          </div>
+      <div className="dashboard-body d-flex">
+        {/* Left Sidebar */}
+        <div 
+          className="sidebar"
+          style={{ 
+            backgroundColor: theme === 'dark' ? colors.primaryDark : colors.primaryLight,
+            color: colors.textOnPrimary
+          }}
+        >
+          <ul className="sidebar-menu">
+            <li 
+              className={`sidebar-item ${activeView === 'dashboard' ? 'active' : ''}`}
+              onClick={() => setActiveView('dashboard')}
+              style={{ 
+                backgroundColor: activeView === 'dashboard' 
+                  ? colors.primary 
+                  : 'transparent'
+              }}
+            >
+              <span className="sidebar-icon">📊</span>
+              <span className="sidebar-text">Dashboard</span>
+            </li>
+            <li 
+              className={`sidebar-item ${activeView === 'settings' ? 'active' : ''}`}
+              onClick={() => setActiveView('settings')}
+              style={{ 
+                backgroundColor: activeView === 'settings' 
+                  ? colors.primary 
+                  : 'transparent'
+              }}
+            >
+              <span className="sidebar-icon">⚙️</span>
+              <span className="sidebar-text">Settings</span>
+            </li>
+          </ul>
+        </div>
+        
+        {/* Main Content */}
+        <div className="dashboard-content p-4">
+          {activeView === 'dashboard' && (
+            <div className="card dashboard-card" style={cardStyle}>
+              <div className="card-body">
+                <h2 className="card-title" style={{ color: colors.primary }}>
+                  Welcome, {currentUser.username}!
+                </h2>
+                <p className="card-text">
+                  You have successfully logged in to the BSS Desktop Application.
+                </p>
+              </div>
+            </div>
+          )}
+          
+          {activeView === 'settings' && <Settings />}
         </div>
       </div>
     </div>

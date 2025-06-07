@@ -2,9 +2,32 @@
 <html>
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;">
     <title>BSS Desktop App</title>
+    <!-- Bootstrap Icons CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <!-- WhatsApp green color for the theme -->
+    <style>
+      :root {
+        --whatsapp-green: #25D366;
+        --whatsapp-dark-green: #128C7E;
+        --whatsapp-light-green: #DCF8C6;
+        --whatsapp-blue: #34B7F1;
+      }
+      /* Status dots */
+      .status-dot {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        margin-right: 5px;
+      }
+      .status-dot.connected {
+        background-color: var(--whatsapp-green);
+      }
+      .status-dot.disconnected {
+        background-color: #ccc;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>

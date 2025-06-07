@@ -28,5 +28,28 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getPlatform: () => process.platform,
   
   // Get app version
-  getAppVersion: () => ipcRenderer.invoke('get-app-version')
+  getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+  
+  // WhatsApp API
+  initWhatsApp: (userId) => ipcRenderer.invoke('init-whatsapp', { userId }),
+  logoutWhatsApp: (userId) => ipcRenderer.invoke('logout-whatsapp', { userId }),
+  getWhatsAppStatus: (userId) => ipcRenderer.invoke('get-whatsapp-status', { userId })
+});
+
+// Set up listeners for WhatsApp events
+contextBridge.exposeInMainWorld('whatsappEvents', {
+  onQrCode: (callback) => ipcRenderer.on('whatsapp-qr', (_, data) => callback(data)),
+  onReady: (callback) => ipcRenderer.on('whatsapp-ready', (_, data) => callback(data)),
+  onAuthenticated: (callback) => ipcRenderer.on('whatsapp-authenticated', (_, data) => callback(data)),
+  onAuthFailure: (callback) => ipcRenderer.on('whatsapp-auth-failure', (_, data) => callback(data)),
+  onDisconnected: (callback) => ipcRenderer.on('whatsapp-disconnected', (_, data) => callback(data)),
+  
+  // Clean up listeners
+  removeListeners: () => {
+    ipcRenderer.removeAllListeners('whatsapp-qr');
+    ipcRenderer.removeAllListeners('whatsapp-ready');
+    ipcRenderer.removeAllListeners('whatsapp-authenticated');
+    ipcRenderer.removeAllListeners('whatsapp-auth-failure');
+    ipcRenderer.removeAllListeners('whatsapp-disconnected');
+  }
 });

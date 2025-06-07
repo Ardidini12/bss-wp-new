@@ -20,4 +20,10 @@ module.exports = {
   resolve: {
     extensions: ['.js', '.jsx', '.json'],
   },
+  // Don't bundle native Node.js modules and WhatsApp Web.js
+  externals: {
+    'whatsapp-web.js': 'commonjs whatsapp-web.js',
+    'puppeteer': 'commonjs puppeteer',
+    'qrcode-terminal': 'commonjs qrcode-terminal'
+  }
 };

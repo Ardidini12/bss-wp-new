@@ -3,6 +3,7 @@ const path = require('node:path');
 const fs = require('fs');
 const { initApi } = require('./backend/api');
 const { getAppTheme, setAppTheme } = require('./backend/store');
+const { initWhatsAppHandlers, initWhatsAppForExistingSessions } = require('./backend/whatsappService');
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require('electron-squirrel-startup')) {
@@ -10,7 +11,7 @@ if (require('electron-squirrel-startup')) {
 }
 
 // Global references
-let mainWindow = null;
+global.mainWindow = null;
 let tray = null;
 
 // Find the logo file
@@ -57,13 +58,18 @@ const copyLogoToOutput = () => {
 
 const createWindow = () => {
   // Create the browser window.
-  mainWindow = new BrowserWindow({
+  global.mainWindow = new BrowserWindow({
     width: 1024,
     height: 768,
     webPreferences: {
       preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
       nodeIntegration: false,
-      contextIsolation: true
+      contextIsolation: true,
+      webSecurity: false, // Disable web security completely
+      additionalArguments: [
+        `--js-flags=--max-old-space-size=4096`,
+        `--disable-web-security`
+      ]
     },
     icon: logoPath,
     frame: false, // Frameless window for custom titlebar
@@ -72,8 +78,20 @@ const createWindow = () => {
     show: false // Don't show until ready-to-show
   });
 
+  // Disable CSP completely
+  global.mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        // Remove any CSP headers if they exist
+        'Content-Security-Policy': [],
+        'Content-Security-Policy-Report-Only': []
+      }
+    });
+  });
+
   // and load the index.html of the app.
-  mainWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
+  global.mainWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
 
   // Apply theme from settings
   const theme = getAppTheme();
@@ -87,20 +105,23 @@ const createWindow = () => {
 
   // Open the DevTools in development
   if (process.env.NODE_ENV === 'development') {
-    mainWindow.webContents.openDevTools();
+    global.mainWindow.webContents.openDevTools();
   }
   
   // Show the window once it's ready
-  mainWindow.once('ready-to-show', () => {
-    mainWindow.show();
-    mainWindow.focus();
+  global.mainWindow.once('ready-to-show', () => {
+    global.mainWindow.show();
+    global.mainWindow.focus();
+    
+    // Initialize WhatsApp for all users with existing sessions immediately
+    initWhatsAppForExistingSessions();
   });
   
   // Handle window close event - hide instead of close
-  mainWindow.on('close', (event) => {
+  global.mainWindow.on('close', (event) => {
     if (!app.isQuitting) {
       event.preventDefault();
-      mainWindow.hide();
+      global.mainWindow.hide();
       return false;
     }
   });
@@ -120,10 +141,10 @@ const createTray = () => {
       { 
         label: 'Open BSS App', 
         click: () => {
-          if (mainWindow === null) {
+          if (global.mainWindow === null) {
             createWindow();
           } else {
-            mainWindow.show();
+            global.mainWindow.show();
           }
         } 
       },
@@ -142,10 +163,10 @@ const createTray = () => {
     
     // Double-click to show the app
     tray.on('double-click', () => {
-      if (mainWindow === null) {
+      if (global.mainWindow === null) {
         createWindow();
       } else {
-        mainWindow.show();
+        global.mainWindow.show();
       }
     });
   } catch (error) {
@@ -160,6 +181,9 @@ app.whenReady().then(() => {
   // Initialize the backend API
   initApi();
   
+  // Initialize WhatsApp handlers
+  initWhatsAppHandlers();
+  
   // Copy logo file for use in webpack output
   copyLogoToOutput();
 
@@ -172,28 +196,28 @@ app.whenReady().then(() => {
   
   // Window control handlers
   ipcMain.handle('minimize-app', () => {
-    if (mainWindow) {
-      mainWindow.minimize();
+    if (global.mainWindow) {
+      global.mainWindow.minimize();
       return { success: true };
     }
     return { success: false, error: 'Window not available' };
   });
   
   ipcMain.handle('maximize-app', () => {
-    if (mainWindow) {
-      if (mainWindow.isMaximized()) {
-        mainWindow.unmaximize();
+    if (global.mainWindow) {
+      if (global.mainWindow.isMaximized()) {
+        global.mainWindow.unmaximize();
       } else {
-        mainWindow.maximize();
+        global.mainWindow.maximize();
       }
-      return { success: true, maximized: mainWindow.isMaximized() };
+      return { success: true, maximized: global.mainWindow.isMaximized() };
     }
     return { success: false, error: 'Window not available' };
   });
   
   ipcMain.handle('close-app', () => {
-    if (mainWindow) {
-      mainWindow.hide();
+    if (global.mainWindow) {
+      global.mainWindow.hide();
       return { success: true };
     }
     return { success: false, error: 'Window not available' };
@@ -213,7 +237,7 @@ app.whenReady().then(() => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
     } else {
-      mainWindow.show();
+      global.mainWindow.show();
     }
   });
 });

@@ -9,6 +9,7 @@ module.exports = [
   {
     test: /[/\\]node_modules[/\\].+\.(m?js|node)$/,
     parser: { amd: false },
+    exclude: /[/\\]node_modules[/\\](whatsapp-web\.js|puppeteer|qrcode-terminal|fluent-ffmpeg)[/\\]/,
     use: {
       loader: '@vercel/webpack-asset-relocator-loader',
       options: {
