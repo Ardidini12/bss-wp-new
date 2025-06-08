@@ -34,6 +34,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   initWhatsApp: (userId) => ipcRenderer.invoke('init-whatsapp', { userId }),
   logoutWhatsApp: (userId) => ipcRenderer.invoke('logout-whatsapp', { userId }),
   getWhatsAppStatus: (userId) => ipcRenderer.invoke('get-whatsapp-status', { userId }),
+  sendWhatsAppMessage: (userId, phoneNumber, message) => 
+    ipcRenderer.invoke('send-whatsapp-message', { userId, phoneNumber, message }),
+  sendWhatsAppMessageWithMedia: (userId, phoneNumber, message, media) => 
+    ipcRenderer.invoke('send-whatsapp-message-with-media', { userId, phoneNumber, message, media }),
+  getWhatsAppMessageStatus: (userId, messageId) => 
+    ipcRenderer.invoke('get-whatsapp-message-status', { userId, messageId }),
   
   // Contacts API
   getContacts: (page, limit, search) => 
@@ -53,9 +59,41 @@ contextBridge.exposeInMainWorld('electronAPI', {
   exportContacts: (format) => 
     ipcRenderer.invoke('export-contacts', { format }),
   
+  // Templates API
+  getTemplates: (page, limit, search) => 
+    ipcRenderer.invoke('get-templates', page, limit, search),
+  addTemplate: (templateData) => 
+    ipcRenderer.invoke('add-template', templateData),
+  updateTemplate: (templateId, templateData) => 
+    ipcRenderer.invoke('update-template', templateId, templateData),
+  deleteTemplates: (templateIds) => 
+    ipcRenderer.invoke('delete-templates', templateIds),
+  getAllTemplateIds: (search) => 
+    ipcRenderer.invoke('get-all-template-ids', search),
+  
+  // Bulk Sender API
+  getSenderSettings: (userId) => ipcRenderer.invoke('get-sender-settings', userId),
+  updateSenderSettings: (userId, settings) => ipcRenderer.invoke('update-sender-settings', userId, settings),
+  scheduleMessages: (userId, contactIds, templateId, scheduledTime) => 
+    ipcRenderer.invoke('schedule-messages', userId, contactIds, templateId, scheduledTime),
+  getScheduledMessages: (userId, page, limit, status) => 
+    ipcRenderer.invoke('get-scheduled-messages', userId, page, limit, status),
+  updateMessageStatus: (messageId, status, whatsappMessageId) => 
+    ipcRenderer.invoke('update-message-status', messageId, status, whatsappMessageId),
+  cancelScheduledMessage: (messageId) => 
+    ipcRenderer.invoke('cancel-scheduled-message', messageId),
+  
   // File system access
   openFileDialog: (options) => 
-    ipcRenderer.invoke('open-file-dialog', options)
+    ipcRenderer.invoke('open-file-dialog', options),
+  
+  // Scheduled message operations
+  getScheduledMessages: (userId, page, limit, status) => ipcRenderer.invoke('get-scheduled-messages', userId, page, limit, status),
+  cancelScheduledMessage: (messageId) => ipcRenderer.invoke('cancel-scheduled-message', messageId),
+  deleteScheduledMessages: (messageIds) => ipcRenderer.invoke('delete-scheduled-messages', messageIds),
+  
+  // Message statistics
+  getMessageStatistics: (userId, startDate, endDate) => ipcRenderer.invoke('get-message-statistics', userId, startDate, endDate),
 });
 
 // Set up listeners for WhatsApp events

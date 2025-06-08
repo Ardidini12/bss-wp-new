@@ -6,6 +6,8 @@ import ThemeToggle from '../components/ThemeToggle';
 import Settings from '../components/Settings';
 import WhatsAppContact from '../components/WhatsAppContact';
 import BulkContacts from '../components/BulkContacts';
+import BulkTemplates from '../components/BulkTemplates';
+import BulkSender from '../components/BulkSender';
 import { getAsset } from '../utils/assetUtils';
 
 const Dashboard = () => {
@@ -173,6 +175,30 @@ const Dashboard = () => {
               <span className="sidebar-text">Bulk Contacts</span>
             </li>
             <li 
+              className={`sidebar-item ${activeView === 'templates' ? 'active' : ''}`}
+              onClick={() => setActiveView('templates')}
+              style={{ 
+                backgroundColor: activeView === 'templates' 
+                  ? colors.primary 
+                  : 'transparent'
+              }}
+            >
+              <span className="sidebar-icon">📝</span>
+              <span className="sidebar-text">Bulk Templates</span>
+            </li>
+            <li 
+              className={`sidebar-item ${activeView === 'sender' ? 'active' : ''}`}
+              onClick={() => setActiveView('sender')}
+              style={{ 
+                backgroundColor: activeView === 'sender' 
+                  ? colors.primary 
+                  : 'transparent'
+              }}
+            >
+              <span className="sidebar-icon">📨</span>
+              <span className="sidebar-text">Bulk Sender</span>
+            </li>
+            <li 
               className={`sidebar-item ${activeView === 'settings' ? 'active' : ''}`}
               onClick={() => setActiveView('settings')}
               style={{ 
@@ -203,6 +229,8 @@ const Dashboard = () => {
           )}
           
           {activeView === 'contacts' && <BulkContacts />}
+          {activeView === 'templates' && <BulkTemplates />}
+          {activeView === 'sender' && <BulkSender />}
           {activeView === 'settings' && <Settings />}
         </div>
       </div>

@@ -17,7 +17,20 @@ const {
   deleteContacts,
   importContacts,
   exportContacts,
-  getAllContactIds
+  getAllContactIds,
+  getTemplates,
+  addTemplate,
+  updateTemplate,
+  deleteTemplates,
+  getAllTemplateIds,
+  getSenderSettings,
+  updateSenderSettings,
+  scheduleMessages,
+  getScheduledMessages,
+  updateMessageStatus,
+  cancelScheduledMessage,
+  deleteScheduledMessages,
+  getAllScheduledMessages
 } = require('./db');
 const { getAppTheme, setAppTheme, getAnimationPrefs, setAnimationPrefs } = require('./store');
 const { app } = require('electron');
@@ -496,6 +509,250 @@ function initApi() {
       };
     } catch (error) {
       return { success: false, error: error.message };
+    }
+  });
+
+  // Template operations
+  ipcMain.handle('get-templates', async (event, page = 1, limit = 100, search = "") => {
+    try {
+      const result = await getTemplates(page, limit, search);
+      return { success: true, ...result };
+    } catch (err) {
+      console.error('Error getting templates:', err);
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('add-template', async (event, templateData) => {
+    try {
+      const newTemplate = await addTemplate(templateData);
+      return { success: true, template: newTemplate };
+    } catch (err) {
+      console.error('Error adding template:', err);
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('update-template', async (event, templateId, templateData) => {
+    try {
+      const updatedTemplate = await updateTemplate(templateId, templateData);
+      return { success: true, template: updatedTemplate };
+    } catch (err) {
+      console.error('Error updating template:', err);
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('delete-templates', async (event, templateIds) => {
+    try {
+      const result = await deleteTemplates(templateIds);
+      return { success: true, ...result };
+    } catch (err) {
+      console.error('Error deleting templates:', err);
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('get-all-template-ids', async (event, search = "") => {
+    try {
+      const templateIds = await getAllTemplateIds(search);
+      return { success: true, templateIds };
+    } catch (err) {
+      console.error('Error getting all template IDs:', err);
+      return { success: false, error: err.message };
+    }
+  });
+
+  // Sender settings operations
+  ipcMain.handle('get-sender-settings', async (event, userId) => {
+    try {
+      const response = await getSenderSettings(userId);
+      return {
+        success: true,
+        settings: response
+      };
+    } catch (error) {
+      console.error('Error getting sender settings:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  });
+
+  ipcMain.handle('update-sender-settings', async (event, userId, settings) => {
+    try {
+      const response = await updateSenderSettings(userId, settings);
+      return {
+        success: true,
+        settings: response
+      };
+    } catch (error) {
+      console.error('Error updating sender settings:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  });
+
+  // Scheduled messages operations
+  ipcMain.handle('schedule-messages', async (event, userId, contactIds, templateId, scheduledTime) => {
+    try {
+      const response = await scheduleMessages(userId, contactIds, templateId, scheduledTime);
+      return {
+        success: true,
+        count: response.count,
+        messages: response.messages
+      };
+    } catch (error) {
+      console.error('Error scheduling messages:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  });
+
+  ipcMain.handle('get-scheduled-messages', async (event, userId, page, limit, status) => {
+    try {
+      const response = await getScheduledMessages(userId, page, limit, status);
+      return {
+        success: true,
+        messages: response.messages,
+        pagination: response.pagination
+      };
+    } catch (error) {
+      console.error('Error getting scheduled messages:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  });
+
+  // Update message status
+  ipcMain.handle('update-message-status', async (event, messageId, status, whatsappMessageId) => {
+    try {
+      const response = await updateMessageStatus(messageId, status, whatsappMessageId);
+      return {
+        success: true,
+        message: response
+      };
+    } catch (error) {
+      console.error('Error updating message status:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  });
+
+  ipcMain.handle('cancel-scheduled-message', async (event, messageId) => {
+    try {
+      const response = await cancelScheduledMessage(messageId);
+      return response;
+    } catch (error) {
+      console.error('Error canceling scheduled message:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  });
+
+  ipcMain.handle('delete-scheduled-messages', async (event, messageIds) => {
+    try {
+      const response = await deleteScheduledMessages(messageIds);
+      return response;
+    } catch (error) {
+      console.error('Error deleting scheduled messages:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  });
+
+  ipcMain.handle('get-message-statistics', async (event, userId, startDate, endDate) => {
+    try {
+      // Convert date strings to Date objects
+      const start = startDate ? new Date(startDate) : new Date(0); // Default to Unix epoch
+      const end = endDate ? new Date(endDate) : new Date(); // Default to current time
+      
+      // Get all messages for this user
+      const allMessages = await getAllScheduledMessages();
+      
+      // Filter messages by user and date range
+      const userMessages = allMessages.filter(message => {
+        const messageDate = new Date(message.scheduled_time);
+        return message.user_id === userId && 
+               messageDate >= start && 
+               messageDate <= end;
+      });
+      
+      // Count messages by status
+      const statusCounts = {
+        SCHEDULED: 0,
+        SENDING: 0,
+        SENT: 0,
+        DELIVERED: 0,
+        READ: 0,
+        FAILED: 0,
+        CANCELED: 0
+      };
+      
+      userMessages.forEach(message => {
+        if (statusCounts.hasOwnProperty(message.status)) {
+          statusCounts[message.status]++;
+        }
+      });
+      
+      // Calculate percentages
+      const total = userMessages.length;
+      const statusPercentages = {};
+      
+      if (total > 0) {
+        for (const [status, count] of Object.entries(statusCounts)) {
+          statusPercentages[status] = Math.round((count / total) * 100);
+        }
+      }
+      
+      // Group messages by day for daily statistics
+      const dailyStats = {};
+      userMessages.forEach(message => {
+        const day = new Date(message.scheduled_time).toISOString().split('T')[0];
+        
+        if (!dailyStats[day]) {
+          dailyStats[day] = {
+            SCHEDULED: 0,
+            SENDING: 0,
+            SENT: 0,
+            DELIVERED: 0,
+            READ: 0,
+            FAILED: 0,
+            CANCELED: 0,
+            total: 0
+          };
+        }
+        
+        dailyStats[day][message.status]++;
+        dailyStats[day].total++;
+      });
+      
+      return {
+        success: true,
+        total,
+        statusCounts,
+        statusPercentages,
+        dailyStats
+      };
+    } catch (error) {
+      console.error('Error getting message statistics:', error);
+      return {
+        success: false,
+        error: error.message
+      };
     }
   });
 }

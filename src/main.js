@@ -3,7 +3,12 @@ const path = require('node:path');
 const fs = require('fs');
 const { initApi } = require('./backend/api');
 const { getAppTheme, setAppTheme } = require('./backend/store');
-const { initWhatsAppHandlers, initWhatsAppForExistingSessions } = require('./backend/whatsappService');
+const { 
+  initWhatsAppHandlers, 
+  initWhatsAppForExistingSessions,
+  startMessageScheduler,
+  findExistingSessionUserIds
+} = require('./backend/whatsappService');
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require('electron-squirrel-startup')) {
@@ -174,6 +179,22 @@ const createTray = () => {
   }
 };
 
+// Start message schedulers for all existing sessions
+const startAllMessageSchedulers = () => {
+  try {
+    const userIds = findExistingSessionUserIds();
+    console.log(`Starting message schedulers for ${userIds.length} users`);
+    
+    for (const userId of userIds) {
+      startMessageScheduler(userId).catch(err => {
+        console.error(`Error starting message scheduler for user ${userId}:`, err);
+      });
+    }
+  } catch (err) {
+    console.error('Error starting message schedulers:', err);
+  }
+};
+
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
@@ -183,6 +204,9 @@ app.whenReady().then(() => {
   
   // Initialize WhatsApp handlers
   initWhatsAppHandlers();
+  
+  // Start message schedulers
+  startAllMessageSchedulers();
   
   // Copy logo file for use in webpack output
   copyLogoToOutput();
