@@ -95,4 +95,5 @@ out/
 .wwebjs_cache
 # WhatsApp Web.js directory
 whatsapp-web.js/
+electron2/
 

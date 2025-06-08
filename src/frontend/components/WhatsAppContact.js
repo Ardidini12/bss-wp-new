@@ -14,6 +14,17 @@ const WhatsAppContact = () => {
   const [isDragging, setIsDragging] = useState(false);
   const [position, setPosition] = useState({ x: 10, y: 10 });
   
+  // Ref to track if we've called initialize already
+  const hasInitialized = useRef(false);
+  // Ref to store the status check interval ID
+  const statusCheckIntervalRef = useRef(null);
+  // Ref to track the previous connection state to avoid duplicate logs
+  const prevConnectedState = useRef(null);
+  // Ref to track if we've received WhatsApp info
+  const hasReceivedInfo = useRef(false);
+  // Store the last event timestamp to debounce events
+  const lastEventTime = useRef(0);
+  
   const contactRef = useRef(null);
   const dragRef = useRef({
     isDragging: false,
@@ -28,12 +39,34 @@ const WhatsAppContact = () => {
     // Check WhatsApp status
     const checkWhatsAppStatus = async () => {
       try {
+        // Avoid excessive logging - only log if it's the first check
+        if (prevConnectedState.current === null) {
+          console.log('Initial WhatsApp status check...');
+        }
+        
         const response = await window.electronAPI.getWhatsAppStatus(currentUser.id);
+        
         if (response.success) {
-          setConnected(response.connected);
+          // Only update and log if state has changed
+          if (response.connected !== connected) {
+            console.log(`WhatsApp connection state changed: ${connected ? 'connected' : 'disconnected'} -> ${response.connected ? 'connected' : 'disconnected'}`);
+            setConnected(response.connected);
+            prevConnectedState.current = response.connected;
+          }
           
-          if (!response.connected && response.hasSession) {
-            // Try to connect with existing session
+          // If connected but don't have user info yet, get it (only if we haven't initialized yet)
+          if (response.connected && !whatsAppInfo && !hasReceivedInfo.current) {
+            console.log('Connected but no WhatsApp info, initializing...');
+            if (!hasInitialized.current) {
+              hasInitialized.current = true;
+              window.electronAPI.initWhatsApp(currentUser.id);
+            }
+          }
+          
+          // If not connected but has session, initialize (only once)
+          if (!response.connected && response.hasSession && !hasInitialized.current) {
+            console.log('Has session but not connected, initializing...');
+            hasInitialized.current = true;
             window.electronAPI.initWhatsApp(currentUser.id);
           }
         }
@@ -44,35 +77,72 @@ const WhatsAppContact = () => {
       }
     };
     
+    // Debounce event handling to prevent excessive processing
+    const debounceEvent = (callback, data, minInterval = 1000) => {
+      const now = Date.now();
+      if (now - lastEventTime.current > minInterval) {
+        lastEventTime.current = now;
+        callback(data);
+      }
+    };
+    
     // Listen for WhatsApp ready event
     const handleReady = (data) => {
       if (data.userId === currentUser.id) {
-        setWhatsAppInfo(data.info);
-        setConnected(true);
-        setLoading(false);
+        // Avoid duplicate ready events (debounce)
+        debounceEvent((eventData) => {
+          console.log('WhatsApp ready event received');
+          setWhatsAppInfo(eventData.info);
+          setConnected(true);
+          setLoading(false);
+          hasReceivedInfo.current = true; // Mark that we've received info
+          prevConnectedState.current = true;
+        }, data);
       }
     };
     
     // Listen for disconnected event
     const handleDisconnected = (data) => {
       if (data.userId === currentUser.id) {
+        console.log('WhatsApp disconnected event received');
         setWhatsAppInfo(null);
         setConnected(false);
+        hasInitialized.current = false;
+        hasReceivedInfo.current = false;
+        prevConnectedState.current = false;
       }
     };
     
     // Register event listeners
     window.whatsappEvents.onReady(handleReady);
     window.whatsappEvents.onDisconnected(handleDisconnected);
+    window.whatsappEvents.onAuthenticated((data) => {
+      if (data.userId === currentUser.id) {
+        console.log('WhatsApp authenticated event received');
+      }
+    });
     
-    // Check status on mount
+    // Initial status check
     checkWhatsAppStatus();
+    
+    // Set up periodic status check every 5 seconds
+    statusCheckIntervalRef.current = setInterval(checkWhatsAppStatus, 5000);
     
     // Clean up
     return () => {
       window.whatsappEvents.removeListeners();
+      if (statusCheckIntervalRef.current) {
+        clearInterval(statusCheckIntervalRef.current);
+      }
     };
-  }, [currentUser]);
+  }, [currentUser, connected, whatsAppInfo]);
+  
+  // Update hasReceivedInfo ref when whatsAppInfo changes
+  useEffect(() => {
+    if (whatsAppInfo) {
+      hasReceivedInfo.current = true;
+    }
+  }, [whatsAppInfo]);
   
   // Function to set component to the bottom left corner of the window
   const resetPosition = () => {

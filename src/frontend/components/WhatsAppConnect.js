@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from './AuthContext';
 import { useTheme } from './ThemeContext';
 import QRCode from 'qrcode';
@@ -13,17 +13,26 @@ const WhatsAppConnect = () => {
   const [whatsAppInfo, setWhatsAppInfo] = useState(null);
   const [error, setError] = useState(null);
   
+  // Ref to track status check interval
+  const statusCheckIntervalRef = useRef(null);
+  
   // Check WhatsApp connection status
   const checkStatus = async () => {
     if (!currentUser) return;
     
     try {
       setLoading(true);
+      console.log('Settings page: Checking WhatsApp status...');
       const response = await window.electronAPI.getWhatsAppStatus(currentUser.id);
       
       if (response.success) {
         if (response.connected) {
           setStatus('connected');
+          // If we're connected but don't have info, try to trigger a ready event
+          if (!whatsAppInfo) {
+            console.log('Settings page: Connected but no WhatsApp info');
+            await window.electronAPI.initWhatsApp(currentUser.id);
+          }
         } else if (response.hasSession) {
           setStatus('session-exists');
           // Try to initialize WhatsApp with existing session
@@ -100,6 +109,7 @@ const WhatsAppConnect = () => {
     // QR code listener
     const handleQrCode = (data) => {
       if (data.userId === currentUser.id) {
+        console.log('Settings page: QR code received');
         setStatus('qr-ready');
         setQrCode(data.qr);
         
@@ -125,6 +135,7 @@ const WhatsAppConnect = () => {
     // WhatsApp ready listener
     const handleReady = (data) => {
       if (data.userId === currentUser.id) {
+        console.log('Settings page: WhatsApp ready event received:', data);
         setStatus('connected');
         setWhatsAppInfo(data.info);
         setQrCode(null);
@@ -134,12 +145,14 @@ const WhatsAppConnect = () => {
     // Authentication listeners
     const handleAuthenticated = (data) => {
       if (data.userId === currentUser.id) {
+        console.log('Settings page: WhatsApp authenticated event received');
         setStatus('authenticated');
       }
     };
     
     const handleAuthFailure = (data) => {
       if (data.userId === currentUser.id) {
+        console.log('Settings page: WhatsApp auth failure event received');
         setStatus('auth-failed');
         setError(data.message || 'Authentication failed');
         // Retry connection
@@ -149,6 +162,7 @@ const WhatsAppConnect = () => {
     
     const handleDisconnected = (data) => {
       if (data.userId === currentUser.id) {
+        console.log('Settings page: WhatsApp disconnected event received');
         setStatus('disconnected');
         setWhatsAppInfo(null);
       }
@@ -161,14 +175,28 @@ const WhatsAppConnect = () => {
     window.whatsappEvents.onAuthFailure(handleAuthFailure);
     window.whatsappEvents.onDisconnected(handleDisconnected);
     
-    // Check status on mount
+    // Initial status check
     checkStatus();
     
-    // Clean up event listeners
+    // Set up periodic status check every 8 seconds 
+    // Different from WhatsAppContact's 5 seconds to avoid simultaneous requests
+    statusCheckIntervalRef.current = setInterval(checkStatus, 8000);
+    
+    // Clean up event listeners and interval
     return () => {
       window.whatsappEvents.removeListeners();
+      if (statusCheckIntervalRef.current) {
+        clearInterval(statusCheckIntervalRef.current);
+      }
     };
   }, [currentUser, colors.primary]);
+  
+  // Effect to update UI when whatsAppInfo changes
+  useEffect(() => {
+    if (whatsAppInfo) {
+      setStatus('connected');
+    }
+  }, [whatsAppInfo]);
   
   // Render loading state
   if (loading && status === 'checking') {
@@ -230,11 +258,22 @@ const WhatsAppConnect = () => {
                     src={whatsAppInfo.profilePic} 
                     alt="WhatsApp Profile" 
                     className="wa-profile-pic me-3"
+                    style={{ width: '60px', height: '60px', borderRadius: '50%', objectFit: 'cover' }}
                   />
                 ) : (
                   <div 
                     className="wa-profile-placeholder me-3"
-                    style={{ backgroundColor: colors.primary }}
+                    style={{ 
+                      backgroundColor: colors.primary,
+                      width: '60px',
+                      height: '60px',
+                      borderRadius: '50%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#fff',
+                      fontSize: '24px'
+                    }}
                   >
                     <span>{whatsAppInfo.name ? whatsAppInfo.name[0] : '?'}</span>
                   </div>

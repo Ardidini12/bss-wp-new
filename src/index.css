@@ -661,3 +661,54 @@ body.dark-theme .sidebar {
 body.dark-theme .user-card {
   background-color: rgba(255, 255, 255, 0.05);
 }
+
+/* Bulk Contacts Styles */
+.bulk-contacts-container {
+  width: 100%;
+}
+
+.bulk-contacts-container .card {
+  margin-bottom: 20px;
+}
+
+.bulk-contacts-container .table {
+  margin-bottom: 0;
+}
+
+.bulk-contacts-container .table-responsive {
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.bulk-contacts-container .table th,
+.bulk-contacts-container .table td {
+  vertical-align: middle;
+  padding: 0.5rem;
+}
+
+.bulk-contacts-container .form-check {
+  display: flex;
+  justify-content: center;
+}
+
+.bulk-contacts-container .nav-tabs {
+  margin-bottom: 1rem;
+}
+
+.bulk-contacts-container .table-danger {
+  background-color: rgba(255, 0, 0, 0.1);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .bulk-contacts-container .card-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .bulk-contacts-container .card-header .btn-group,
+  .bulk-contacts-container .card-header .d-flex {
+    margin-top: 10px;
+    width: 100%;
+  }
+}

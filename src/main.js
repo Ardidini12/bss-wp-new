@@ -228,6 +228,51 @@ app.whenReady().then(() => {
     return { success: true, version: app.getVersion() };
   });
 
+  // File system access handlers
+  ipcMain.handle('open-file-dialog', async (event, options) => {
+    try {
+      if (!global.mainWindow) {
+        return { success: false, error: 'Main window not available' };
+      }
+      
+      const { dialog } = require('electron');
+      
+      // Set default options if not provided
+      const dialogOptions = {
+        title: options.title || 'Select File',
+        properties: options.properties || ['openFile'],
+        filters: options.filters || [
+          { name: 'All Files', extensions: ['*'] }
+        ]
+      };
+      
+      const result = await dialog.showOpenDialog(global.mainWindow, dialogOptions);
+      
+      return {
+        success: !result.canceled,
+        filePaths: result.filePaths,
+        canceled: result.canceled
+      };
+    } catch (error) {
+      console.error('Error showing file dialog:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Debug IPC calls
+  ipcMain.on('debug-log', (event, data) => {
+    console.log('DEBUG:', data);
+  });
+  
+  // Debug handler to log all IPC calls
+  const originalHandle = ipcMain.handle;
+  ipcMain.handle = function(channel, listener) {
+    return originalHandle.call(ipcMain, channel, (event, ...args) => {
+      console.log(`IPC call to ${channel} with args:`, JSON.stringify(args));
+      return listener(event, ...args);
+    });
+  };
+
   createWindow();
   createTray();
 

@@ -5,6 +5,7 @@ import { useTheme } from '../components/ThemeContext';
 import ThemeToggle from '../components/ThemeToggle';
 import Settings from '../components/Settings';
 import WhatsAppContact from '../components/WhatsAppContact';
+import BulkContacts from '../components/BulkContacts';
 import { getAsset } from '../utils/assetUtils';
 
 const Dashboard = () => {
@@ -160,6 +161,18 @@ const Dashboard = () => {
               <span className="sidebar-text">Dashboard</span>
             </li>
             <li 
+              className={`sidebar-item ${activeView === 'contacts' ? 'active' : ''}`}
+              onClick={() => setActiveView('contacts')}
+              style={{ 
+                backgroundColor: activeView === 'contacts' 
+                  ? colors.primary 
+                  : 'transparent'
+              }}
+            >
+              <span className="sidebar-icon">👥</span>
+              <span className="sidebar-text">Bulk Contacts</span>
+            </li>
+            <li 
               className={`sidebar-item ${activeView === 'settings' ? 'active' : ''}`}
               onClick={() => setActiveView('settings')}
               style={{ 
@@ -189,6 +202,7 @@ const Dashboard = () => {
             </div>
           )}
           
+          {activeView === 'contacts' && <BulkContacts />}
           {activeView === 'settings' && <Settings />}
         </div>
       </div>

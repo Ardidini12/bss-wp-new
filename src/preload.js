@@ -33,7 +33,29 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // WhatsApp API
   initWhatsApp: (userId) => ipcRenderer.invoke('init-whatsapp', { userId }),
   logoutWhatsApp: (userId) => ipcRenderer.invoke('logout-whatsapp', { userId }),
-  getWhatsAppStatus: (userId) => ipcRenderer.invoke('get-whatsapp-status', { userId })
+  getWhatsAppStatus: (userId) => ipcRenderer.invoke('get-whatsapp-status', { userId }),
+  
+  // Contacts API
+  getContacts: (page, limit, search) => 
+    ipcRenderer.invoke('get-contacts', { page, limit, search }),
+  getAllContactIds: (search) => 
+    ipcRenderer.invoke('get-all-contact-ids', { search }),
+  addContact: (contactData) => 
+    ipcRenderer.invoke('add-contact', contactData),
+  updateContact: (contactId, contactData) => 
+    ipcRenderer.invoke('update-contact', { contactId, contactData }),
+  deleteContacts: (contactIds) => 
+    ipcRenderer.invoke('delete-contacts', { contactIds }),
+  importContactsFile: (filePath) => 
+    ipcRenderer.invoke('import-contacts-file', filePath),
+  importContacts: (contacts, skipDuplicates) => 
+    ipcRenderer.invoke('import-contacts', { contacts, skipDuplicates }),
+  exportContacts: (format) => 
+    ipcRenderer.invoke('export-contacts', { format }),
+  
+  // File system access
+  openFileDialog: (options) => 
+    ipcRenderer.invoke('open-file-dialog', options)
 });
 
 // Set up listeners for WhatsApp events
