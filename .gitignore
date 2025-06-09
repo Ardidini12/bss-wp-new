@@ -93,6 +93,10 @@ out/
 
 # Whatsapp cache
 .wwebjs_cache
+
+# Whatsapp auth
+.wwebjs_auth
+
 # WhatsApp Web.js directory
 whatsapp-web.js/
 electron2/

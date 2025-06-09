@@ -94,6 +94,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // Message statistics
   getMessageStatistics: (userId, startDate, endDate) => ipcRenderer.invoke('get-message-statistics', userId, startDate, endDate),
+  
+  // Sales API
+  getSales: (page, limit, filters) => ipcRenderer.invoke('getSales', page, limit, filters),
+  updateSale: (saleId, saleData) => ipcRenderer.invoke('updateSale', saleId, saleData),
+  deleteSales: (saleIds) => ipcRenderer.invoke('deleteSales', saleIds),
+  getLastFetchTime: () => ipcRenderer.invoke('getLastFetchTime'),
+  fetchSalesNow: () => ipcRenderer.invoke('fetchSalesNow'),
+  getSalesTowns: () => ipcRenderer.invoke('getSalesTowns'),
 });
 
 // Set up listeners for WhatsApp events

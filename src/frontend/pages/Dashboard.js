@@ -8,6 +8,7 @@ import WhatsAppContact from '../components/WhatsAppContact';
 import BulkContacts from '../components/BulkContacts';
 import BulkTemplates from '../components/BulkTemplates';
 import BulkSender from '../components/BulkSender';
+import SalesAPI from '../components/SalesAPI';
 import { getAsset } from '../utils/assetUtils';
 
 const Dashboard = () => {
@@ -199,6 +200,18 @@ const Dashboard = () => {
               <span className="sidebar-text">Bulk Sender</span>
             </li>
             <li 
+              className={`sidebar-item ${activeView === 'salesapi' ? 'active' : ''}`}
+              onClick={() => setActiveView('salesapi')}
+              style={{ 
+                backgroundColor: activeView === 'salesapi' 
+                  ? colors.primary 
+                  : 'transparent'
+              }}
+            >
+              <span className="sidebar-icon">🛍️</span>
+              <span className="sidebar-text">Sales API</span>
+            </li>
+            <li 
               className={`sidebar-item ${activeView === 'settings' ? 'active' : ''}`}
               onClick={() => setActiveView('settings')}
               style={{ 
@@ -231,6 +244,7 @@ const Dashboard = () => {
           {activeView === 'contacts' && <BulkContacts />}
           {activeView === 'templates' && <BulkTemplates />}
           {activeView === 'sender' && <BulkSender />}
+          {activeView === 'salesapi' && <SalesAPI />}
           {activeView === 'settings' && <Settings />}
         </div>
       </div>

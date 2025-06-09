@@ -913,7 +913,7 @@ function trackMessageStatus(userId, whatsappMessageId, messageId) {
 // Initialize WhatsApp client and message scheduler for a user
 async function initWhatsAppWithScheduler(userId) {
   // Initialize WhatsApp client
-  const client = initWhatsAppClient(userId);
+      const client = initWhatsAppClient(userId);
   
   // Create named handler for clean removal
   const readyHandler = async () => {

@@ -757,4 +757,232 @@ function initApi() {
   });
 }
 
-module.exports = { initApi }; 
+// Sales API Service
+function setupSalesAPI(ipcMain) {
+  const axios = require('axios');
+  let salesFetchInterval = null;
+  let lastFetchTime = null;
+  
+  // Function to get authentication token
+  const getAuthToken = async () => {
+    try {
+      const response = await axios.post('https://crm-api.bss.com.al/authentication/login', {
+        password: "T3aWy<[3dq07",
+        userName: "Admin"
+      }, {
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      // Extract token from response
+      if (response.data && response.data.accessToken) {
+        return response.data.accessToken;
+      } else {
+        console.error('Token not found in authentication response:', response.data);
+        throw new Error('Authentication token not found in response');
+      }
+    } catch (error) {
+      console.error('Error getting auth token:', error);
+      throw new Error('Failed to authenticate with sales API');
+    }
+  };
+  
+  // Function to fetch sales data for a specific town
+  const fetchSalesForTown = async (token, town) => {
+    try {
+      // Get current date in MM/DD/YYYY format
+      const today = new Date();
+      const dateString = `${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getDate().toString().padStart(2, '0')}/${today.getFullYear()}`;
+      
+      const response = await axios.get(`https://crm-api.bss.com.al/11120/Sales?Date=${dateString}&PageNumber=&PageSize=&HasPhone=true&CustomerGroup=PAKICE&Town=${town}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      return response.data;
+    } catch (error) {
+      console.error(`Error fetching sales for town ${town}:`, error);
+      return [];
+    }
+  };
+  
+  // Function to fetch sales for all towns
+  const fetchAllSales = async () => {
+    try {
+      // Get auth token
+      const token = await getAuthToken();
+      
+      // Fetch sales for each town
+      const towns = ['tirane', 'fier', 'vlore'];
+      const allSalesPromises = towns.map(town => fetchSalesForTown(token, town));
+      const salesResults = await Promise.all(allSalesPromises);
+      
+      // Combine all sales
+      let allSales = [];
+      salesResults.forEach(result => {
+        if (Array.isArray(result)) {
+          allSales = [...allSales, ...result];
+        }
+      });
+      
+      // Save new sales to database
+      const db = require('./db');
+      const saveResult = await db.saveSales(allSales);
+      
+      // Update last fetch time
+      lastFetchTime = saveResult.lastFetchTime;
+      
+      return saveResult;
+    } catch (error) {
+      console.error('Error fetching all sales:', error);
+      return {
+        error: error.message,
+        newSalesCount: 0,
+        newSales: []
+      };
+    }
+  };
+  
+  // Function to start periodic sales fetching
+  const startSalesFetching = () => {
+    // Clear existing interval if any
+    if (salesFetchInterval) {
+      clearInterval(salesFetchInterval);
+    }
+    
+    // Fetch immediately on start
+    fetchAllSales();
+    
+    // Set up interval to fetch every 2 minutes
+    salesFetchInterval = setInterval(fetchAllSales, 2 * 60 * 1000);
+    
+    return true;
+  };
+  
+  // Function to stop periodic sales fetching
+  const stopSalesFetching = () => {
+    if (salesFetchInterval) {
+      clearInterval(salesFetchInterval);
+      salesFetchInterval = null;
+      return true;
+    }
+    return false;
+  };
+  
+  // Initialize last fetch time from database
+  const initSalesAPI = async () => {
+    const db = require('./db');
+    const result = await db.getLastFetchTime();
+    lastFetchTime = result.lastFetchTime;
+    
+    // Start fetching sales
+    startSalesFetching();
+  };
+  
+  // IPC handlers for sales API
+  
+  // Get sales with filtering and pagination
+  ipcMain.handle('getSales', async (event, page, limit, filters) => {
+    try {
+      const db = require('./db');
+      const result = await db.getSales(page, limit, filters);
+      return {
+        success: true,
+        ...result
+      };
+    } catch (error) {
+      console.error('Error getting sales:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  });
+  
+  // Update a sale
+  ipcMain.handle('updateSale', async (event, saleId, saleData) => {
+    try {
+      const db = require('./db');
+      const result = await db.updateSale(saleId, saleData);
+      return {
+        success: true,
+        ...result
+      };
+    } catch (error) {
+      console.error('Error updating sale:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  });
+  
+  // Delete sales
+  ipcMain.handle('deleteSales', async (event, saleIds) => {
+    try {
+      const db = require('./db');
+      const result = await db.deleteSales(saleIds);
+      return {
+        success: true,
+        ...result
+      };
+    } catch (error) {
+      console.error('Error deleting sales:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  });
+  
+  // Get last fetch time
+  ipcMain.handle('getLastFetchTime', async () => {
+    return {
+      success: true,
+      lastFetchTime
+    };
+  });
+  
+  // Force fetch sales now
+  ipcMain.handle('fetchSalesNow', async () => {
+    try {
+      const result = await fetchAllSales();
+      return {
+        success: true,
+        ...result
+      };
+    } catch (error) {
+      console.error('Error fetching sales now:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  });
+  
+  // Get all towns from sales data
+  ipcMain.handle('getSalesTowns', async () => {
+    try {
+      const db = require('./db');
+      const result = await db.getSalesTowns();
+      return {
+        success: true,
+        ...result
+      };
+    } catch (error) {
+      console.error('Error getting sales towns:', error);
+      return {
+        success: false,
+        error: error.message,
+        towns: []
+      };
+    }
+  });
+  
+  // Initialize the sales API
+  initSalesAPI();
+}
+
+module.exports = { initApi, setupSalesAPI }; 

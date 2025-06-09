@@ -1,7 +1,7 @@
 const { app, BrowserWindow, ipcMain, nativeTheme, Menu, Tray } = require('electron');
 const path = require('node:path');
 const fs = require('fs');
-const { initApi } = require('./backend/api');
+const { initApi, setupSalesAPI } = require('./backend/api');
 const { getAppTheme, setAppTheme } = require('./backend/store');
 const { 
   initWhatsAppHandlers, 
@@ -199,18 +199,22 @@ const startAllMessageSchedulers = () => {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(() => {
-  // Initialize the backend API
-  initApi();
+  copyLogoToOutput();
+  createWindow();
+  createTray();
   
-  // Initialize WhatsApp handlers
-  initWhatsAppHandlers();
+  // Setup API handlers
+  initApi(ipcMain);
+  
+  // Setup WhatsApp handlers
+  initWhatsAppHandlers(ipcMain);
+  
+  // Setup Sales API
+  setupSalesAPI(ipcMain);
   
   // Start message schedulers
   startAllMessageSchedulers();
   
-  // Copy logo file for use in webpack output
-  copyLogoToOutput();
-
   // Handle theme changes
   ipcMain.handle('set-theme', (event, theme) => {
     nativeTheme.themeSource = theme;
@@ -297,17 +301,10 @@ app.whenReady().then(() => {
     });
   };
 
-  createWindow();
-  createTray();
-
-  // On OS X it's common to re-create a window in the app when the
-  // dock icon is clicked and there are no other windows open.
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
-    } else {
-      global.mainWindow.show();
-    }
+    // On macOS it's common to re-create a window in the app when the
+    // dock icon is clicked and there are no other windows open.
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
 

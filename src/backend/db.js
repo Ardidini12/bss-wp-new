@@ -14,6 +14,9 @@ const templatesFilePath = path.join(dbFolderPath, 'templates.json');
 const scheduledMessagesFilePath = path.join(dbFolderPath, 'scheduled_messages.json');
 const senderSettingsFilePath = path.join(dbFolderPath, 'sender_settings.json');
 
+// Sales database
+const salesFilePath = path.join(dbFolderPath, 'sales.json');
+
 // Create database folder if it doesn't exist
 if (!fs.existsSync(dbFolderPath)) {
   fs.mkdirSync(dbFolderPath, { recursive: true });
@@ -57,6 +60,15 @@ if (!fs.existsSync(scheduledMessagesFilePath)) {
 if (!fs.existsSync(senderSettingsFilePath)) {
   fs.writeFileSync(senderSettingsFilePath, JSON.stringify({
     senderSettings: []
+  }));
+}
+
+// Initialize sales database file if it doesn't exist
+if (!fs.existsSync(salesFilePath)) {
+  fs.writeFileSync(salesFilePath, JSON.stringify({
+    sales: [],
+    nextId: 1,
+    lastFetchTime: null
   }));
 }
 
@@ -1217,6 +1229,225 @@ const db = {
   })
 };
 
+function readSales() {
+  try {
+    const data = fs.readFileSync(salesFilePath, 'utf8');
+    return JSON.parse(data);
+  } catch (err) {
+    console.error('Error reading sales file:', err);
+    return { sales: [], nextId: 1, lastFetchTime: null };
+  }
+}
+
+function writeSales(data) {
+  fs.writeFileSync(salesFilePath, JSON.stringify(data, null, 2));
+}
+
+// Get sales with pagination and filtering
+function getSales(page = 1, limit = 100, filters = {}) {
+  return new Promise((resolve, reject) => {
+    try {
+      const salesData = readSales();
+      let filteredSales = [...salesData.sales];
+      
+      // Apply town filter
+      if (filters.town && filters.town !== 'all') {
+        filteredSales = filteredSales.filter(sale => 
+          sale.businessEntity.town.toLowerCase() === filters.town.toLowerCase()
+        );
+      }
+      
+      // Apply date range filter
+      if (filters.startDate && filters.endDate) {
+        const startDate = new Date(filters.startDate);
+        const endDate = new Date(filters.endDate);
+        endDate.setHours(23, 59, 59, 999); // Include the end date fully
+        
+        filteredSales = filteredSales.filter(sale => {
+          const saleDate = new Date(sale.documentDate);
+          return saleDate >= startDate && saleDate <= endDate;
+        });
+      }
+      
+      // Apply global search filter
+      if (filters.search && filters.search.trim() !== '') {
+        const searchTerm = filters.search.toLowerCase().trim();
+        filteredSales = filteredSales.filter(sale => {
+          // Search in multiple fields
+          return (
+            (sale.documentNumber && sale.documentNumber.toLowerCase().includes(searchTerm)) ||
+            (sale.businessEntity.name && sale.businessEntity.name.toLowerCase().includes(searchTerm)) ||
+            (sale.businessEntity.town && sale.businessEntity.town.toLowerCase().includes(searchTerm)) ||
+            (sale.businessEntity.phone && sale.businessEntity.phone.includes(searchTerm)) ||
+            (sale.documentLevel.code && sale.documentLevel.code.toLowerCase().includes(searchTerm))
+          );
+        });
+      }
+      
+      // Sort by fetch time or document date (newest first)
+      filteredSales.sort((a, b) => {
+        return new Date(b.fetchDate || b.documentDate) - new Date(a.fetchDate || a.documentDate);
+      });
+      
+      // Apply pagination
+      const totalSales = filteredSales.length;
+      const totalPages = Math.ceil(totalSales / limit);
+      const offset = (page - 1) * limit;
+      const paginatedSales = filteredSales.slice(offset, offset + limit);
+      
+      resolve({
+        sales: paginatedSales,
+        pagination: {
+          page,
+          limit,
+          totalSales,
+          totalPages
+        }
+      });
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+// Save new sales
+function saveSales(salesList) {
+  return new Promise((resolve, reject) => {
+    try {
+      const salesData = readSales();
+      const newSales = [];
+      const currentTime = new Date().toISOString();
+      
+      // Process each sale
+      for (const sale of salesList) {
+        // Check if sale with this ID already exists
+        const existingSale = salesData.sales.find(s => s.id === sale.id);
+        
+        if (!existingSale) {
+          // Add fetch date to track when we fetched it
+          const newSale = {
+            ...sale,
+            fetchDate: currentTime
+          };
+          
+          salesData.sales.push(newSale);
+          newSales.push(newSale);
+        }
+      }
+      
+      // Update last fetch time
+      salesData.lastFetchTime = currentTime;
+      
+      // Save to database
+      writeSales(salesData);
+      
+      resolve({
+        newSalesCount: newSales.length,
+        newSales,
+        lastFetchTime: currentTime
+      });
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+// Update a sale
+function updateSale(saleId, saleData) {
+  return new Promise((resolve, reject) => {
+    try {
+      const salesData = readSales();
+      
+      // Find sale by ID
+      const saleIndex = salesData.sales.findIndex(s => s.id === saleId);
+      
+      if (saleIndex === -1) {
+        reject(new Error('Sale not found'));
+        return;
+      }
+      
+      // Update sale
+      salesData.sales[saleIndex] = {
+        ...salesData.sales[saleIndex],
+        ...saleData,
+        // Keep original ID and fetch date
+        id: salesData.sales[saleIndex].id,
+        fetchDate: salesData.sales[saleIndex].fetchDate
+      };
+      
+      // Save to database
+      writeSales(salesData);
+      
+      resolve({
+        success: true,
+        sale: salesData.sales[saleIndex]
+      });
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+// Delete sales
+function deleteSales(saleIds) {
+  return new Promise((resolve, reject) => {
+    try {
+      const salesData = readSales();
+      
+      // Filter out the sales to delete
+      salesData.sales = salesData.sales.filter(sale => !saleIds.includes(sale.id));
+      
+      // Save to database
+      writeSales(salesData);
+      
+      resolve({
+        success: true,
+        deletedCount: saleIds.length
+      });
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+// Get last fetch time
+function getLastFetchTime() {
+  return new Promise((resolve) => {
+    try {
+      const salesData = readSales();
+      resolve({
+        lastFetchTime: salesData.lastFetchTime
+      });
+    } catch (err) {
+      console.error('Error getting last fetch time:', err);
+      resolve({
+        lastFetchTime: null
+      });
+    }
+  });
+}
+
+// Get all towns from sales data
+function getSalesTowns() {
+  return new Promise((resolve) => {
+    try {
+      const salesData = readSales();
+      const towns = [...new Set(salesData.sales.map(sale => 
+        sale.businessEntity.town.toLowerCase()))]
+        .map(town => town.charAt(0).toUpperCase() + town.slice(1));
+      
+      resolve({
+        towns
+      });
+    } catch (err) {
+      console.error('Error getting sales towns:', err);
+      resolve({
+        towns: []
+      });
+    }
+  });
+}
+
 module.exports = {
   db,
   registerUser,
@@ -1245,5 +1476,11 @@ module.exports = {
   getUnsentScheduledMessages,
   cancelScheduledMessage,
   getAllScheduledMessages,
-  canSendMessageNow
+  canSendMessageNow,
+  getSales,
+  saveSales,
+  updateSale,
+  deleteSales,
+  getLastFetchTime,
+  getSalesTowns
 }; 
