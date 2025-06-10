@@ -40,6 +40,9 @@ const db = require('./db');
 // Track scheduler intervals by user ID
 const schedulerIntervals = new Map();
 
+// Track message statuses for sales
+const salesMessageTracking = new Map();
+
 // Initialize WhatsApp client for a specific user
 function initWhatsAppClient(userId, forceInit = false) {
   // If a client is already initializing, don't start another initialization
@@ -53,7 +56,7 @@ function initWhatsAppClient(userId, forceInit = false) {
     console.log(`WhatsApp client for user ${userId} is already connected, skipping initialization`);
     return clientInstances.get(userId);
   }
-
+  
   // If client exists but we're forcing reinitialization, clean up the old client first
   if (clientInstances.has(userId) && forceInit) {
     try {
@@ -69,7 +72,7 @@ function initWhatsAppClient(userId, forceInit = false) {
   // Mark client as initializing to prevent duplicate initializations
   clientInitializing.set(userId, true);
   console.log(`Initializing WhatsApp client for user ${userId}`);
-
+  
   // Create new client instance with LocalAuth strategy
   const client = new Client({
     authStrategy: new LocalAuth({
@@ -87,7 +90,7 @@ function initWhatsAppClient(userId, forceInit = false) {
       ]
     }
   });
-
+  
   // Set a higher max listeners value to avoid warnings
   client.setMaxListeners(25);
 
@@ -95,7 +98,7 @@ function initWhatsAppClient(userId, forceInit = false) {
   clientInstances.set(userId, client);
   // Set initial connection state
   clientConnectionState.set(userId, 'INITIALIZING');
-
+  
   // Set up event handlers
   client.on('qr', (qr) => {
     // Send QR code to renderer
@@ -103,7 +106,7 @@ function initWhatsAppClient(userId, forceInit = false) {
     clientConnectionState.set(userId, 'QR_READY');
     global.mainWindow.webContents.send('whatsapp-qr', { userId, qr });
   });
-
+  
   client.on('ready', async () => {
     // Get client info when ready
     try {
@@ -190,14 +193,48 @@ function initWhatsAppClient(userId, forceInit = false) {
     
     global.mainWindow.webContents.send('whatsapp-disconnected', { userId });
   });
-
+  
+  // Handle message status updates for sales messages
+  client.on('message_ack', async (message, ack) => {
+    try {
+      // Handle ack codes (3 = delivered, 4 = read)
+      // For more info: https://docs.wwebjs.dev/Message.html#.ACK_TYPES
+      
+      // Get WhatsApp message ID
+      const whatsappMessageId = message.id._serialized;
+      
+      // Check if this is a tracked sales message
+      if (salesMessageTracking.has(whatsappMessageId)) {
+        const { salesMessageId } = salesMessageTracking.get(whatsappMessageId);
+        const db = require('./db');
+        
+        // Update status based on ack code
+        if (ack === 2) {
+          // Message sent to server (but we already handle this when sending)
+          console.log(`Sales message ${salesMessageId} sent to server`);
+        } else if (ack === 3) {
+          // Message delivered to recipient
+          console.log(`Sales message ${salesMessageId} delivered to recipient`);
+          await db.updateSalesMessageStatus(salesMessageId, 'DELIVERED', whatsappMessageId);
+        } else if (ack === 4) {
+          // Message read by recipient
+          console.log(`Sales message ${salesMessageId} read by recipient`);
+          await db.updateSalesMessageStatus(salesMessageId, 'READ', whatsappMessageId);
+        }
+      }
+      
+    } catch (error) {
+      console.error('Error handling message status update:', error);
+    }
+  });
+  
   // Initialize the client
   client.initialize().catch(err => {
     console.error(`Error initializing WhatsApp client for user ${userId}:`, err);
     clientConnectionState.set(userId, 'ERROR');
     clientInitializing.set(userId, false); // No longer initializing
   });
-
+  
   return client;
 }
 
@@ -942,6 +979,61 @@ async function initWhatsAppWithScheduler(userId) {
   return client;
 }
 
+// Track sales message status
+function trackSalesMessageStatus(userId, whatsappMessageId, salesMessageId) {
+  try {
+    const client = clientInstances.get(userId);
+    if (!client) {
+      console.error(`Cannot track sales message status: No client for user ${userId}`);
+      return false;
+    }
+    
+    console.log(`Setting up tracking for sales message ${salesMessageId} with WhatsApp ID ${whatsappMessageId}`);
+    
+    // Create a key for tracking
+    const trackingKey = `${userId}_${whatsappMessageId}`;
+    
+    // Store tracking info
+    salesMessageTracking.set(trackingKey, {
+      userId,
+      messageId: whatsappMessageId,
+      salesMessageId,
+      setupTime: new Date().toISOString()
+    });
+    
+    // Set up event handlers
+    const handleAck = async (msg, ack) => {
+      // Make sure this is our message
+      if (msg.id._serialized !== whatsappMessageId) return;
+      
+      console.log(`Message ACK received for sales message ${salesMessageId}: ${ack}`);
+      
+      let newStatus;
+      // ACK 1 = SENT
+      // ACK 2 = DELIVERED
+      // ACK 3 = READ
+      if (ack === 2) {
+        newStatus = 'DELIVERED';
+        await db.updateSalesMessageStatus(salesMessageId, newStatus);
+      } else if (ack === 3) {
+        newStatus = 'READ';
+        await db.updateSalesMessageStatus(salesMessageId, newStatus);
+        
+        // Remove handler when read
+        client.removeListener('message_ack', handleAck);
+      }
+    };
+    
+    // Add listeners
+    client.on('message_ack', handleAck);
+    
+    return true;
+  } catch (error) {
+    console.error('Error setting up sales message tracking:', error);
+    return false;
+  }
+}
+
 // Initialize IPC handlers
 function initWhatsAppHandlers() {
   // Initialize WhatsApp client
@@ -1114,6 +1206,11 @@ function initWhatsAppHandlers() {
   // Get message status
   ipcMain.handle('get-whatsapp-message-status', async (event, { userId, messageId }) => {
     return await getMessageStatus(userId, messageId);
+  });
+
+  // Track sales message status (direct method for executeJavaScript calls)
+  ipcMain.handle('trackSalesMessageStatus', async (event, userId, whatsappMessageId, salesMessageId) => {
+    return trackSalesMessageStatus(userId, whatsappMessageId, salesMessageId);
   });
 }
 

@@ -16,6 +16,8 @@ const senderSettingsFilePath = path.join(dbFolderPath, 'sender_settings.json');
 
 // Sales database
 const salesFilePath = path.join(dbFolderPath, 'sales.json');
+const salesSettingsFilePath = path.join(dbFolderPath, 'sales_settings.json');
+const salesScheduledMessagesFilePath = path.join(dbFolderPath, 'sales_scheduled_messages.json');
 
 // Create database folder if it doesn't exist
 if (!fs.existsSync(dbFolderPath)) {
@@ -69,6 +71,27 @@ if (!fs.existsSync(salesFilePath)) {
     sales: [],
     nextId: 1,
     lastFetchTime: null
+  }));
+}
+
+// Initialize sales settings file if it doesn't exist
+if (!fs.existsSync(salesSettingsFilePath)) {
+  fs.writeFileSync(salesSettingsFilePath, JSON.stringify({
+    autoSchedulerEnabled: false,
+    firstMessageDelay: 2,
+    firstMessageDelayUnit: 'hours',
+    secondMessageDelay: 180,
+    secondMessageDelayUnit: 'days',
+    firstMessageTemplate: "Hello {{name}}, thank you for your purchase of {{amount}}. We appreciate your business!",
+    secondMessageTemplate: "Hello {{name}}, it's been a while since your purchase. How are you enjoying our product? We'd love to hear your feedback!"
+  }));
+}
+
+// Initialize sales scheduled messages file if it doesn't exist
+if (!fs.existsSync(salesScheduledMessagesFilePath)) {
+  fs.writeFileSync(salesScheduledMessagesFilePath, JSON.stringify({
+    scheduledMessages: [],
+    nextId: 1
   }));
 }
 
@@ -1243,6 +1266,52 @@ function writeSales(data) {
   fs.writeFileSync(salesFilePath, JSON.stringify(data, null, 2));
 }
 
+function readSalesSettings() {
+  try {
+    const data = fs.readFileSync(salesSettingsFilePath, 'utf8');
+    const settings = JSON.parse(data);
+    
+    // Ensure delay units are set even if they are missing in the file
+    if (!settings.firstMessageDelayUnit) {
+      settings.firstMessageDelayUnit = 'hours';
+    }
+    if (!settings.secondMessageDelayUnit) {
+      settings.secondMessageDelayUnit = 'days';
+    }
+    
+    return settings;
+  } catch (err) {
+    console.error('Error reading sales settings file:', err);
+    return {
+      autoSchedulerEnabled: false,
+      firstMessageDelay: 2,
+      firstMessageDelayUnit: 'hours',
+      secondMessageDelay: 180,
+      secondMessageDelayUnit: 'days',
+      firstMessageTemplate: "Hello {{name}}, thank you for your purchase of {{amount}}. We appreciate your business!",
+      secondMessageTemplate: "Hello {{name}}, it's been a while since your purchase. How are you enjoying our product? We'd love to hear your feedback!"
+    };
+  }
+}
+
+function writeSalesSettings(data) {
+  fs.writeFileSync(salesSettingsFilePath, JSON.stringify(data, null, 2));
+}
+
+function readSalesScheduledMessages() {
+  try {
+    const data = fs.readFileSync(salesScheduledMessagesFilePath, 'utf8');
+    return JSON.parse(data);
+  } catch (err) {
+    console.error('Error reading sales scheduled messages file:', err);
+    return { scheduledMessages: [], nextId: 1 };
+  }
+}
+
+function writeSalesScheduledMessages(data) {
+  fs.writeFileSync(salesScheduledMessagesFilePath, JSON.stringify(data, null, 2));
+}
+
 // Get sales with pagination and filtering
 function getSales(page = 1, limit = 100, filters = {}) {
   return new Promise((resolve, reject) => {
@@ -1284,9 +1353,19 @@ function getSales(page = 1, limit = 100, filters = {}) {
         });
       }
       
-      // Sort by fetch time or document date (newest first)
+      // Sort primarily by document date, newest first (to ensure today's sales are at the top)
       filteredSales.sort((a, b) => {
-        return new Date(b.fetchDate || b.documentDate) - new Date(a.fetchDate || a.documentDate);
+        // First compare document dates
+        const docDateA = new Date(a.documentDate);
+        const docDateB = new Date(b.documentDate);
+        
+        // If document dates are different, sort by them (newest first)
+        if (docDateA.toDateString() !== docDateB.toDateString()) {
+          return docDateB - docDateA;
+        }
+        
+        // If document dates are the same, use fetchDate as secondary sort (newest first)
+        return new Date(b.fetchDate) - new Date(a.fetchDate);
       });
       
       // Apply pagination
@@ -1448,6 +1527,716 @@ function getSalesTowns() {
   });
 }
 
+// Get sales settings
+function getSalesSettings() {
+  return new Promise((resolve) => {
+    try {
+      const settings = readSalesSettings();
+      // Ensure delay units are always included
+      if (!settings.firstMessageDelayUnit) {
+        settings.firstMessageDelayUnit = 'hours';
+      }
+      if (!settings.secondMessageDelayUnit) {
+        settings.secondMessageDelayUnit = 'days';
+      }
+      resolve(settings);
+    } catch (error) {
+      console.error('Error getting sales settings:', error);
+      resolve({
+        autoSchedulerEnabled: false,
+        firstMessageDelay: 2,
+        firstMessageDelayUnit: 'hours',
+        secondMessageDelay: 180,
+        secondMessageDelayUnit: 'days',
+        firstMessageTemplate: "Hello {{name}}, thank you for your purchase of {{amount}}. We appreciate your business!",
+        secondMessageTemplate: "Hello {{name}}, it's been a while since your purchase. How are you enjoying our product? We'd love to hear your feedback!"
+      });
+    }
+  });
+}
+
+// Update sales settings
+function updateSalesSettings(settings) {
+  return new Promise((resolve, reject) => {
+    try {
+      writeSalesSettings(settings);
+      resolve({ success: true });
+    } catch (error) {
+      console.error('Error updating sales settings:', error);
+      reject(error);
+    }
+  });
+}
+
+// Schedule sales messages
+function scheduleSalesMessages(saleId, userId) {
+  return new Promise(async (resolve, reject) => {
+    try {
+      // Check if autoscheduler is enabled
+      const settings = readSalesSettings();
+      
+      const salesData = readSales();
+      const sale = salesData.sales.find(s => s.id === saleId);
+      
+      if (!sale) {
+        reject(new Error('Sale not found'));
+        return;
+      }
+      
+      // Only schedule if the sale is from today
+      const saleDate = new Date(sale.documentDate);
+      const today = new Date();
+      const isSaleFromToday = 
+        saleDate.getDate() === today.getDate() &&
+        saleDate.getMonth() === today.getMonth() &&
+        saleDate.getFullYear() === today.getFullYear();
+      
+      // Add metadata for tracking
+      sale.messageScheduled = settings.autoSchedulerEnabled && isSaleFromToday;
+      sale.schedulingSkipped = !settings.autoSchedulerEnabled || !isSaleFromToday;
+      sale.schedulingReason = !settings.autoSchedulerEnabled 
+        ? 'AutoScheduler Disabled' 
+        : (!isSaleFromToday ? 'Sale Not From Today' : 'Scheduled');
+      
+      // Save updated sale
+      writeSales(salesData);
+      
+      // If autoscheduler is disabled or sale is not from today, don't schedule messages
+      if (!settings.autoSchedulerEnabled || !isSaleFromToday) {
+        resolve({
+          scheduled: false,
+          reason: sale.schedulingReason
+        });
+        return;
+      }
+      
+      // Calculate scheduled times based on the delay unit
+      const now = new Date();
+      let firstMessageTime = new Date();
+      
+      // Apply the appropriate time calculation based on the delay unit from settings
+      if (settings.firstMessageDelayUnit === 'seconds') {
+        firstMessageTime.setSeconds(firstMessageTime.getSeconds() + settings.firstMessageDelay);
+        console.log(`Scheduling first message for sale ${saleId} at ${firstMessageTime.toLocaleString()}, which is ${settings.firstMessageDelay} seconds from now`);
+      } else if (settings.firstMessageDelayUnit === 'minutes') {
+        firstMessageTime.setMinutes(firstMessageTime.getMinutes() + settings.firstMessageDelay);
+        console.log(`Scheduling first message for sale ${saleId} at ${firstMessageTime.toLocaleString()}, which is ${settings.firstMessageDelay} minutes from now`);
+      } else if (settings.firstMessageDelayUnit === 'hours') {
+        firstMessageTime.setHours(firstMessageTime.getHours() + settings.firstMessageDelay);
+        console.log(`Scheduling first message for sale ${saleId} at ${firstMessageTime.toLocaleString()}, which is ${settings.firstMessageDelay} hours from now`);
+      } else if (settings.firstMessageDelayUnit === 'days') {
+        firstMessageTime.setDate(firstMessageTime.getDate() + settings.firstMessageDelay);
+        console.log(`Scheduling first message for sale ${saleId} at ${firstMessageTime.toLocaleString()}, which is ${settings.firstMessageDelay} days from now`);
+      } else {
+        // Default to 10 seconds if no valid unit is specified
+        firstMessageTime.setSeconds(firstMessageTime.getSeconds() + 10);
+        console.log(`Scheduling first message for sale ${saleId} at ${firstMessageTime.toLocaleString()}, which is 10 seconds from now (default)`);
+      }
+      
+      // Get name and amount from sale
+      const customerName = sale.businessEntity.name || 'Customer';
+      const documentNumber = sale.documentNumber || '';
+      
+      // Replace variables in templates
+      const firstMessageContent = settings.firstMessageTemplate
+        .replace(/{{name}}/g, customerName)
+        .replace(/{{amount}}/g, documentNumber);
+      
+      const secondMessageContent = settings.secondMessageTemplate
+        .replace(/{{name}}/g, customerName)
+        .replace(/{{amount}}/g, documentNumber);
+      
+      // Create message records
+      const messagesData = readSalesScheduledMessages();
+      
+      // First message
+      const firstMessage = {
+        id: messagesData.nextId++,
+        saleId,
+        userId,
+        messageNumber: 1,
+        status: 'SCHEDULED',
+        phoneNumber: sale.businessEntity.phone,
+        customerName,
+        messageContent: firstMessageContent,
+        scheduledTime: firstMessageTime.toISOString(),
+        sentTime: null,
+        deliveredTime: null,
+        readTime: null,
+        failedTime: null,
+        canceledTime: null,
+        whatsappMessageId: null,
+        dependentMessageId: null,
+        scheduledDate: firstMessageTime.toDateString()
+      };
+      
+      messagesData.scheduledMessages.push(firstMessage);
+      
+      // Second message (will be scheduled after first message is sent)
+      const secondMessage = {
+        id: messagesData.nextId++,
+        saleId,
+        userId,
+        messageNumber: 2,
+        status: 'PENDING_FIRST_MESSAGE',
+        phoneNumber: sale.businessEntity.phone,
+        customerName,
+        messageContent: secondMessageContent,
+        scheduledTime: null, // Will be set when first message is sent
+        sentTime: null,
+        deliveredTime: null,
+        readTime: null,
+        failedTime: null,
+        canceledTime: null,
+        whatsappMessageId: null,
+        dependentMessageId: firstMessage.id, // Depends on first message
+        scheduledDate: null // Will be set when first message is sent
+      };
+      
+      messagesData.scheduledMessages.push(secondMessage);
+      
+      // Save messages
+      writeSalesScheduledMessages(messagesData);
+      
+      resolve({
+        scheduled: true,
+        firstMessage,
+        secondMessage
+      });
+    } catch (error) {
+      console.error('Error scheduling sales messages:', error);
+      reject(error);
+    }
+  });
+}
+
+// Get sales scheduled messages
+function getSalesScheduledMessages(page = 1, limit = 20, filters = {}, options = {}) {
+  return new Promise((resolve) => {
+    try {
+      const messagesData = readSalesScheduledMessages();
+      let filteredMessages = [...messagesData.scheduledMessages];
+      
+      // Apply status filter
+      if (filters.status && filters.status !== 'ALL') {
+        filteredMessages = filteredMessages.filter(message => message.status === filters.status);
+      }
+      
+      // Apply message number filter
+      if (filters.messageNumber) {
+        filteredMessages = filteredMessages.filter(message => message.messageNumber === parseInt(filters.messageNumber));
+      }
+      
+      // Apply date range filter
+      if (filters.startDate && filters.endDate) {
+        const startDate = new Date(filters.startDate);
+        const endDate = new Date(filters.endDate);
+        endDate.setHours(23, 59, 59, 999); // Include the end date fully
+        
+        filteredMessages = filteredMessages.filter(message => {
+          const scheduledDate = message.scheduledTime ? new Date(message.scheduledTime) : null;
+          if (!scheduledDate) return false;
+          return scheduledDate >= startDate && scheduledDate <= endDate;
+        });
+      }
+      
+      // Default sorting options
+      const orderBy = options.orderBy || 'scheduledTime';
+      const orderDirection = options.orderDirection || 'desc';
+      const groupRelatedMessages = options.groupRelatedMessages || false;
+      
+      // First sort by the requested field
+      filteredMessages.sort((a, b) => {
+        // Handle missing values
+        if (!a[orderBy]) return 1;
+        if (!b[orderBy]) return -1;
+        
+        // For date fields, convert to Date objects
+        if (orderBy.includes('Time')) {
+          const dateA = new Date(a[orderBy]);
+          const dateB = new Date(b[orderBy]);
+          return orderDirection === 'desc' ? dateB - dateA : dateA - dateB;
+        }
+        
+        // For string or numeric fields
+        if (orderDirection === 'desc') {
+          return a[orderBy] > b[orderBy] ? -1 : 1;
+        } else {
+          return a[orderBy] > b[orderBy] ? 1 : -1;
+        }
+      });
+      
+      // Always group related messages (msg1 and msg2 from same sale)
+      // regardless of if groupRelatedMessages is true - this is critical for proper ordering
+      {
+        // Build a map of message pairs by saleId
+        const messagePairsBySaleId = new Map();
+        
+        // First pass: group messages by saleId
+        filteredMessages.forEach(message => {
+          if (!messagePairsBySaleId.has(message.saleId)) {
+            messagePairsBySaleId.set(message.saleId, { msg1: null, msg2: null });
+          }
+          
+          const pair = messagePairsBySaleId.get(message.saleId);
+          if (message.messageNumber === 1) {
+            pair.msg1 = message;
+          } else if (message.messageNumber === 2) {
+            pair.msg2 = message;
+          }
+        });
+        
+        // Now find the most recent scheduled time for each sale
+        // This will be used for sorting the pairs
+        const sortValues = new Map();
+        
+        messagePairsBySaleId.forEach((pair, saleId) => {
+          // Find the best timestamp to sort by
+          let sortTimestamp = new Date(0);
+          
+          // First priority: Msg1 scheduledTime if exists
+          if (pair.msg1 && pair.msg1.scheduledTime) {
+            sortTimestamp = new Date(pair.msg1.scheduledTime);
+          }
+          
+          sortValues.set(saleId, sortTimestamp);
+        });
+        
+        // Sort the sales by their most recent message timestamp (newest first)
+        const sortedSaleIds = Array.from(messagePairsBySaleId.keys()).sort((saleIdA, saleIdB) => {
+          const timeA = sortValues.get(saleIdA);
+          const timeB = sortValues.get(saleIdB);
+          return timeB - timeA; // Newest first
+        });
+        
+        // Create the final array with pairs in the correct order
+        const result = [];
+        
+        sortedSaleIds.forEach(saleId => {
+          const pair = messagePairsBySaleId.get(saleId);
+          
+          // Add msg2 first if exists
+          if (pair.msg2) {
+            result.push(pair.msg2);
+          }
+          
+          // Then add msg1 after its msg2
+          if (pair.msg1) {
+            result.push(pair.msg1);
+          }
+        });
+        
+        filteredMessages = result;
+      }
+      
+      // Apply pagination
+      const totalMessages = filteredMessages.length;
+      const totalPages = Math.ceil(totalMessages / limit);
+      const offset = (page - 1) * limit;
+      const paginatedMessages = filteredMessages.slice(offset, offset + limit);
+      
+      resolve({
+        messages: paginatedMessages,
+        pagination: {
+          page,
+          limit,
+          totalMessages,
+          totalPages
+        }
+      });
+    } catch (error) {
+      console.error('Error getting sales scheduled messages:', error);
+      resolve({
+        messages: [],
+        pagination: {
+          page,
+          limit,
+          totalMessages: 0,
+          totalPages: 0
+        }
+      });
+    }
+  });
+}
+
+// Update sales message status
+function updateSalesMessageStatus(messageId, status, whatsappMessageId = null) {
+  return new Promise((resolve, reject) => {
+    try {
+      const messagesData = readSalesScheduledMessages();
+      const messageIndex = messagesData.scheduledMessages.findIndex(message => message.id === messageId);
+      
+      if (messageIndex === -1) {
+        reject(new Error('Message not found'));
+        return;
+      }
+      
+      const message = messagesData.scheduledMessages[messageIndex];
+      const now = new Date();
+      const nowIso = now.toISOString();
+      
+      // Update status and respective time
+      message.status = status;
+      
+      if (status === 'SENDING') {
+        message.sendingTime = nowIso;
+      } else if (status === 'SENT') {
+        message.sentTime = nowIso;
+        
+        // If this is a first message being sent, schedule the second message
+        if (message.messageNumber === 1) {
+          // Find the dependent second message
+          const secondMessageIndex = messagesData.scheduledMessages.findIndex(m => 
+            m.dependentMessageId === message.id && m.messageNumber === 2);
+          
+          if (secondMessageIndex !== -1) {
+            const secondMessage = messagesData.scheduledMessages[secondMessageIndex];
+            const settings = readSalesSettings();
+            
+            // Calculate scheduled time for second message based on FIRST MESSAGE SENT TIME
+            // This ensures the timing is relative to when Msg1 was actually sent, not when Msg2 is being scheduled
+            const secondMessageTime = new Date(message.sentTime);
+            
+            if (settings.secondMessageDelayUnit === 'seconds') {
+              secondMessageTime.setSeconds(secondMessageTime.getSeconds() + settings.secondMessageDelay);
+              console.log(`Scheduling second message for ${secondMessage.customerName} at ${secondMessageTime.toLocaleString()}, which is ${settings.secondMessageDelay} seconds after first message sent at ${new Date(message.sentTime).toLocaleString()}`);
+            } else if (settings.secondMessageDelayUnit === 'minutes') {
+              secondMessageTime.setMinutes(secondMessageTime.getMinutes() + settings.secondMessageDelay);
+              console.log(`Scheduling second message for ${secondMessage.customerName} at ${secondMessageTime.toLocaleString()}, which is ${settings.secondMessageDelay} minutes after first message sent at ${new Date(message.sentTime).toLocaleString()}`);
+            } else if (settings.secondMessageDelayUnit === 'hours') {
+              secondMessageTime.setHours(secondMessageTime.getHours() + settings.secondMessageDelay);
+              console.log(`Scheduling second message for ${secondMessage.customerName} at ${secondMessageTime.toLocaleString()}, which is ${settings.secondMessageDelay} hours after first message sent at ${new Date(message.sentTime).toLocaleString()}`);
+            } else if (settings.secondMessageDelayUnit === 'days') {
+              secondMessageTime.setDate(secondMessageTime.getDate() + settings.secondMessageDelay);
+              console.log(`Scheduling second message for ${secondMessage.customerName} at ${secondMessageTime.toLocaleString()}, which is ${settings.secondMessageDelay} days after first message sent at ${new Date(message.sentTime).toLocaleString()}`);
+            } else {
+              // Default to 20 seconds if no valid unit is specified
+              secondMessageTime.setSeconds(secondMessageTime.getSeconds() + 20);
+              console.log(`Scheduling second message for ${secondMessage.customerName} at ${secondMessageTime.toLocaleString()}, which is 20 seconds after first message sent at ${new Date(message.sentTime).toLocaleString()} (default)`);
+            }
+            
+            // Update second message
+            secondMessage.status = 'SCHEDULED';
+            secondMessage.scheduledTime = secondMessageTime.toISOString();
+            secondMessage.scheduledDate = secondMessageTime.toDateString();
+            
+            messagesData.scheduledMessages[secondMessageIndex] = secondMessage;
+          }
+        }
+      } else if (status === 'DELIVERED') {
+        message.deliveredTime = nowIso;
+      } else if (status === 'READ') {
+        message.readTime = nowIso;
+      } else if (status === 'FAILED') {
+        message.failedTime = nowIso;
+        
+        // If first message fails, cancel the second message
+        if (message.messageNumber === 1) {
+          const secondMessageIndex = messagesData.scheduledMessages.findIndex(m => 
+            m.dependentMessageId === message.id && m.messageNumber === 2);
+          
+          if (secondMessageIndex !== -1) {
+            messagesData.scheduledMessages[secondMessageIndex].status = 'CANCELED';
+            messagesData.scheduledMessages[secondMessageIndex].canceledTime = nowIso;
+            messagesData.scheduledMessages[secondMessageIndex].cancelReason = 'First message failed';
+          }
+        }
+      } else if (status === 'CANCELED') {
+        message.canceledTime = nowIso;
+        
+        // If first message is canceled, cancel the second message
+        if (message.messageNumber === 1) {
+          const secondMessageIndex = messagesData.scheduledMessages.findIndex(m => 
+            m.dependentMessageId === message.id && m.messageNumber === 2);
+          
+          if (secondMessageIndex !== -1) {
+            messagesData.scheduledMessages[secondMessageIndex].status = 'CANCELED';
+            messagesData.scheduledMessages[secondMessageIndex].canceledTime = nowIso;
+            messagesData.scheduledMessages[secondMessageIndex].cancelReason = 'First message was canceled';
+          }
+        }
+      }
+      
+      // Update WhatsApp message ID if provided
+      if (whatsappMessageId) {
+        message.whatsappMessageId = whatsappMessageId;
+      }
+      
+      // Save updated message
+      messagesData.scheduledMessages[messageIndex] = message;
+      writeSalesScheduledMessages(messagesData);
+      
+      resolve({
+        success: true,
+        message
+      });
+    } catch (error) {
+      console.error('Error updating sales message status:', error);
+      reject(error);
+    }
+  });
+}
+
+// Cancel sales scheduled message
+function cancelSalesScheduledMessage(messageId) {
+  return updateSalesMessageStatus(messageId, 'CANCELED');
+}
+
+// Delete sales scheduled messages
+function deleteSalesScheduledMessages(messageIds) {
+  return new Promise((resolve, reject) => {
+    try {
+      const messagesData = readSalesScheduledMessages();
+      
+      // Filter out the messages to delete
+      messagesData.scheduledMessages = messagesData.scheduledMessages.filter(message => 
+        !messageIds.includes(message.id));
+      
+      // Save updated messages
+      writeSalesScheduledMessages(messagesData);
+      
+      resolve({
+        success: true,
+        deletedCount: messageIds.length
+      });
+    } catch (error) {
+      console.error('Error deleting sales scheduled messages:', error);
+      reject(error);
+    }
+  });
+}
+
+// Get due sales messages
+function getDueSalesMessages(userId) {
+  return new Promise((resolve) => {
+    try {
+      // Always read the latest data
+      const messagesData = readSalesScheduledMessages();
+      const now = new Date();
+      const settings = readSalesSettings();
+      
+      // First, check for messages that are too old to be sent (expired)
+      const outdatedMessages = messagesData.scheduledMessages.filter(message => {
+        // Only consider SCHEDULED or PENDING_FIRST_MESSAGE messages
+        if (message.status !== 'SCHEDULED' && message.status !== 'PENDING_FIRST_MESSAGE') {
+          return false;
+        }
+        
+        // Get scheduled time (if exists)
+        if (!message.scheduledTime) {
+          return false; // Skip messages without scheduled time
+        }
+        
+        const scheduledTime = new Date(message.scheduledTime);
+        
+        // Reasonable buffer - 60 seconds (more precise than the previous 1-hour window)
+        const bufferMs = 60 * 1000; 
+        
+        // Check if the message is past due (current time > scheduled time + buffer)
+        const isPastDue = now.getTime() > (scheduledTime.getTime() + bufferMs);
+        
+        // For Msg1: if past due, mark it as expired
+        if (message.messageNumber === 1 && isPastDue) {
+          console.log(`Message ${message.id} (Msg1) is expired: scheduled for ${scheduledTime.toLocaleString()} but current time is ${now.toLocaleString()}`);
+          return true;
+        }
+        
+        // For Msg2: if past due, mark it as expired
+        if (message.messageNumber === 2 && isPastDue) {
+          console.log(`Message ${message.id} (Msg2) is expired: scheduled for ${scheduledTime.toLocaleString()} but current time is ${now.toLocaleString()}`);
+          return true;
+        }
+        
+        return false;
+      });
+      
+      // Cancel all outdated messages
+      if (outdatedMessages.length > 0) {
+        console.log(`Canceling ${outdatedMessages.length} outdated messages for user ${userId}`);
+        
+        // Cancel all outdated messages
+        for (const outdatedMessage of outdatedMessages) {
+          outdatedMessage.status = 'CANCELED';
+          outdatedMessage.canceledTime = now.toISOString();
+          outdatedMessage.cancelReason = 'Message is too old to be delivered';
+          
+          // If this is a first message, cancel the second message too
+          if (outdatedMessage.messageNumber === 1) {
+            const secondMessageIndex = messagesData.scheduledMessages.findIndex(m => 
+              m.dependentMessageId === outdatedMessage.id && m.messageNumber === 2);
+            
+            if (secondMessageIndex !== -1) {
+              messagesData.scheduledMessages[secondMessageIndex].status = 'CANCELED';
+              messagesData.scheduledMessages[secondMessageIndex].canceledTime = now.toISOString();
+              messagesData.scheduledMessages[secondMessageIndex].cancelReason = 'First message was too old to be delivered';
+            }
+          }
+        }
+        
+        // Save changes
+        writeSalesScheduledMessages(messagesData);
+      }
+      
+      // Now find messages that are scheduled and due RIGHT NOW (respecting exact time)
+      const dueMessages = messagesData.scheduledMessages.filter(message => {
+        // Only consider SCHEDULED messages
+        if (message.status !== 'SCHEDULED') {
+          return false;
+        }
+        
+        if (!message.scheduledTime) {
+          return false;
+        }
+        
+        // Get scheduled time
+        const scheduledTime = new Date(message.scheduledTime);
+        
+        // Check if the current time is EXACTLY equal to or slightly past the scheduled time
+        // We want to be very precise about when we send the message
+        const diffInSeconds = (now - scheduledTime) / 1000;
+        
+        // Check if we're exactly at the scheduled time (within millisecond precision)
+        // This ensures Msg1 waits the EXACT amount of time set in settings
+        const diffInMs = now.getTime() - scheduledTime.getTime();
+        return diffInMs >= 0 && diffInMs < 100; // Only allow 100ms precision for exact timing
+      });
+      
+      // Save any status changes made
+      writeSalesScheduledMessages(messagesData);
+      
+      // Log detailed info about due messages
+      if (dueMessages.length > 0) {
+        console.log(`Found ${dueMessages.length} due messages for user ${userId}:`);
+        dueMessages.forEach(msg => {
+          const scheduledTime = new Date(msg.scheduledTime);
+          const timeDiff = (now - scheduledTime) / 1000; // in seconds
+          console.log(`Message ID: ${msg.id}, Type: ${msg.messageNumber}, Scheduled: ${scheduledTime.toLocaleString()}, Due for: ${timeDiff.toFixed(1)}s`);
+        });
+      }
+      
+      resolve(dueMessages);
+    } catch (error) {
+      console.error('Error getting due sales messages:', error);
+      resolve([]);
+    }
+  });
+}
+
+// Get sales message statistics
+function getSalesMessageStatistics(startDate, endDate) {
+  return new Promise((resolve) => {
+    try {
+      const messagesData = readSalesScheduledMessages();
+      const salesData = readSales();
+      
+      // Filter messages by date range if provided
+      let filteredMessages = messagesData.scheduledMessages;
+      if (startDate && endDate) {
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999); // Include the end date fully
+        
+        filteredMessages = filteredMessages.filter(message => {
+          const createdAt = message.scheduledTime ? new Date(message.scheduledTime) : null;
+          if (!createdAt) return false;
+          return createdAt >= start && createdAt <= end;
+        });
+      }
+      
+      // Count messages by status
+      const statusCounts = {
+        SCHEDULED: 0,
+        SCHEDULED_FUTURE: 0,
+        PENDING_FIRST_MESSAGE: 0,
+        SENDING: 0,
+        SENT: 0,
+        DELIVERED: 0,
+        READ: 0,
+        FAILED: 0,
+        CANCELED: 0
+      };
+      
+      filteredMessages.forEach(message => {
+        if (statusCounts.hasOwnProperty(message.status)) {
+          statusCounts[message.status]++;
+        }
+      });
+      
+      // Count messages by message number
+      const messageNumberCounts = {
+        1: 0,
+        2: 0
+      };
+      
+      filteredMessages.forEach(message => {
+        if (messageNumberCounts.hasOwnProperty(message.messageNumber)) {
+          messageNumberCounts[message.messageNumber]++;
+        }
+      });
+      
+      // Count skipped schedules
+      const skippedCount = salesData.sales.filter(sale => sale.schedulingSkipped).length;
+      
+      // Group messages by day for daily statistics
+      const dailyStats = {};
+      filteredMessages.forEach(message => {
+        if (!message.scheduledTime) return;
+        
+        const day = new Date(message.scheduledTime).toISOString().split('T')[0];
+        
+        if (!dailyStats[day]) {
+          dailyStats[day] = {
+            SCHEDULED: 0,
+            SCHEDULED_FUTURE: 0,
+            PENDING_FIRST_MESSAGE: 0,
+            SENDING: 0,
+            SENT: 0,
+            DELIVERED: 0,
+            READ: 0,
+            FAILED: 0,
+            CANCELED: 0,
+            total: 0
+          };
+        }
+        
+        dailyStats[day][message.status]++;
+        dailyStats[day].total++;
+      });
+      
+      resolve({
+        totalMessages: filteredMessages.length,
+        statusCounts,
+        messageNumberCounts,
+        skippedCount,
+        dailyStats
+      });
+    } catch (error) {
+      console.error('Error getting sales message statistics:', error);
+      resolve({
+        totalMessages: 0,
+        statusCounts: {},
+        messageNumberCounts: {},
+        skippedCount: 0,
+        dailyStats: {}
+      });
+    }
+  });
+}
+
+// Get all user IDs
+function getAllUserIds() {
+  return new Promise((resolve) => {
+    try {
+      const usersData = readUsers();
+      const userIds = usersData.users.map(user => user.id);
+      resolve(userIds);
+    } catch (error) {
+      console.error('Error getting all user IDs:', error);
+      resolve([1]); // Default to user ID 1 if there's an error
+    }
+  });
+}
+
 module.exports = {
   db,
   registerUser,
@@ -1482,5 +2271,15 @@ module.exports = {
   updateSale,
   deleteSales,
   getLastFetchTime,
-  getSalesTowns
+  getSalesTowns,
+  getSalesSettings,
+  updateSalesSettings,
+  scheduleSalesMessages,
+  getSalesScheduledMessages,
+  updateSalesMessageStatus,
+  cancelSalesScheduledMessage,
+  deleteSalesScheduledMessages,
+  getDueSalesMessages,
+  getSalesMessageStatistics,
+  getAllUserIds
 }; 

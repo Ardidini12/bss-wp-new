@@ -30,7 +30,8 @@ const {
   updateMessageStatus,
   cancelScheduledMessage,
   deleteScheduledMessages,
-  getAllScheduledMessages
+  getAllScheduledMessages,
+  getAllUserIds
 } = require('./db');
 const { getAppTheme, setAppTheme, getAnimationPrefs, setAnimationPrefs } = require('./store');
 const { app } = require('electron');
@@ -755,6 +756,24 @@ function initApi() {
       };
     }
   });
+
+  // Get sales scheduled messages
+  ipcMain.handle('getSalesScheduledMessages', async (event, page, limit, filters, options) => {
+    try {
+      const db = require('./db');
+      const result = await db.getSalesScheduledMessages(page, limit, filters, options);
+      return {
+        success: true,
+        ...result
+      };
+    } catch (error) {
+      console.error('Error getting sales scheduled messages:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  });
 }
 
 // Sales API Service
@@ -834,6 +853,9 @@ function setupSalesAPI(ipcMain) {
       // Update last fetch time
       lastFetchTime = saveResult.lastFetchTime;
       
+      // Check if autoscheduler is enabled and schedule messages for new sales
+      await scheduleMessagesForNewSales(saveResult.newSales);
+      
       return saveResult;
     } catch (error) {
       console.error('Error fetching all sales:', error);
@@ -842,6 +864,178 @@ function setupSalesAPI(ipcMain) {
         newSalesCount: 0,
         newSales: []
       };
+    }
+  };
+  
+  // Function to schedule messages for new sales
+  const scheduleMessagesForNewSales = async (newSales) => {
+    try {
+      if (!newSales || newSales.length === 0) {
+        return;
+      }
+      
+      const db = require('./db');
+      
+      // Get current user ID (using the first one found for now)
+      // In a real app, you'd get the active user ID from the session
+      const activeUserId = 1; // Default to first user for testing
+      
+      // Schedule messages for each new sale
+      for (const sale of newSales) {
+        try {
+          await db.scheduleSalesMessages(sale.id, activeUserId);
+        } catch (error) {
+          console.error(`Error scheduling messages for sale ${sale.id}:`, error);
+        }
+      }
+    } catch (error) {
+      console.error('Error scheduling messages for new sales:', error);
+    }
+  };
+  
+  // Start message processor interval
+  let messageProcessorInterval = null;
+
+  // Function to start message processor
+  const startMessageProcessor = () => {
+    // Clear existing interval if any
+    if (messageProcessorInterval) {
+      clearInterval(messageProcessorInterval);
+    }
+    
+    // Check for due messages every 100ms
+    // This ensures extremely precise timing for sending messages exactly when scheduled
+    messageProcessorInterval = setInterval(processDueSalesMessages, 100);
+    
+    // Also run immediately
+    processDueSalesMessages();
+    
+    console.log('Sales message processor started with 100ms interval for millisecond-precision timing');
+    
+    return true;
+  };
+
+  // Function to stop the message processor
+  const stopMessageProcessor = () => {
+    if (messageProcessorInterval) {
+      console.log('Stopping sales message processor');
+      clearInterval(messageProcessorInterval);
+      messageProcessorInterval = null;
+      return true;
+    }
+    return false;
+  };
+
+  // Process due sales messages
+  const processDueSalesMessages = async (userId = null) => {
+    try {
+      const db = require('./db');
+      
+      // Get all users if none specified
+      const usersToProcess = userId ? [userId] : await db.getAllUserIds();
+      
+      for (const activeUserId of usersToProcess) {
+        // Get due messages for this user
+        const dueMessages = await db.getDueSalesMessages(activeUserId);
+        
+        if (dueMessages.length === 0) {
+          continue; // No messages to send for this user
+        }
+        
+        console.log(`Processing ${dueMessages.length} due sales messages for user ${activeUserId}`);
+        
+        // Check if WhatsApp is connected
+        let whatsappStatus;
+        try {
+          whatsappStatus = await global.mainWindow.webContents.executeJavaScript(`
+            window.electronAPI.getWhatsAppStatus(${activeUserId})
+          `);
+        } catch (error) {
+          console.error('Error checking WhatsApp status:', error);
+          continue; // Skip this user if we can't check WhatsApp status
+        }
+        
+        if (!whatsappStatus || !whatsappStatus.connected) {
+          console.log(`WhatsApp client for user ${activeUserId} is not connected, skipping message processing`);
+          continue; // Skip this user if WhatsApp is not connected
+        }
+        
+        // Process each due message, respecting exact timing
+        for (const message of dueMessages) {
+          try {
+            // Calculate how many seconds past the scheduled time
+            const scheduledTime = new Date(message.scheduledTime);
+            const now = new Date();
+            const secondsPastScheduled = Math.floor((now - scheduledTime) / 1000);
+            
+            console.log(`Processing sales message ${message.id} (Type: ${message.messageNumber}, Status: ${message.status}, Scheduled: ${scheduledTime.toLocaleString()}, Current: ${now.toLocaleString()}, Seconds past scheduled: ${secondsPastScheduled})`);
+            
+            // Skip future messages - should never happen with our new exact timing filter,
+            // but keeping as a safeguard
+            if (secondsPastScheduled < 0) {
+              console.log(`Message ${message.id} is scheduled for the future (${Math.abs(secondsPastScheduled)} seconds from now), skipping for now`);
+              continue;
+            }
+            
+            // Ensure we're processing the message at exactly the right time
+            // This adds extra protection to make sure messages respect their timing
+            if (message.messageNumber === 1 && secondsPastScheduled > 1) {
+              console.log(`Warning: Message ${message.id} (Msg1) is being processed ${secondsPastScheduled} seconds after scheduled time`);
+            }
+            
+            // Update status to SENDING
+            await db.updateSalesMessageStatus(message.id, 'SENDING');
+            
+            // Send message with detailed error tracking
+            try {
+              console.log(`Attempting to send message ${message.id} to ${message.phoneNumber}`);
+              
+              const sendResult = await global.mainWindow.webContents.executeJavaScript(`
+                window.electronAPI.sendWhatsAppMessage(
+                  ${activeUserId},
+                  "${message.phoneNumber}",
+                  "${message.messageContent.replace(/"/g, '\\"')}"
+                )
+              `);
+              
+              if (sendResult && sendResult.success) {
+                console.log(`Message ${message.id} sent successfully with WhatsApp ID: ${sendResult.messageId}`);
+                
+                // Update status to SENT with the WhatsApp message ID for tracking
+                await db.updateSalesMessageStatus(message.id, 'SENT', sendResult.messageId);
+                
+                // Set up message status tracking for real-time delivery/read updates
+                await global.mainWindow.webContents.executeJavaScript(`
+                  window.electronAPI.trackSalesMessageStatus(
+                    ${activeUserId},
+                    "${sendResult.messageId}",
+                    ${message.id}
+                  )
+                `);
+                
+                console.log(`Tracking set up for message ${message.id} with WhatsApp ID ${sendResult.messageId}`);
+              } else {
+                // Handle failed sending with detailed reason
+                const errorReason = sendResult?.error || 'Unknown error during message sending';
+                console.error(`Failed to send message ${message.id}: ${errorReason}`);
+                
+                // Update status to FAILED with the error reason
+                await db.updateSalesMessageStatus(message.id, 'FAILED');
+              }
+            } catch (sendError) {
+              console.error(`Exception during message sending for message ${message.id}:`, sendError);
+              await db.updateSalesMessageStatus(message.id, 'FAILED');
+            }
+          } catch (error) {
+            console.error(`Error processing sales message ${message.id}:`, error);
+            
+            // Update status to FAILED
+            await db.updateSalesMessageStatus(message.id, 'FAILED');
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error processing due sales messages:', error);
     }
   };
   
@@ -879,6 +1073,50 @@ function setupSalesAPI(ipcMain) {
     
     // Start fetching sales
     startSalesFetching();
+    
+    // Start message processor
+    startMessageProcessor();
+    
+    // Check for any expired messages on startup
+    try {
+      console.log('Checking for expired messages on startup...');
+      const allUserIds = await db.getAllUserIds();
+      
+      // Process each user to check for expired messages
+      for (const userId of allUserIds) {
+        // This will automatically mark expired messages as canceled
+        const expiredMessages = await db.getDueSalesMessages(userId);
+        
+        if (expiredMessages.length > 0) {
+          console.log(`Found ${expiredMessages.length} messages ready to be sent for user ${userId}`);
+          
+          // Process these messages immediately
+          await processDueSalesMessages(userId);
+        }
+      }
+      
+      console.log('Expired message check completed');
+    } catch (error) {
+      console.error('Error checking for expired messages on startup:', error);
+    }
+    
+    // Start historical data recovery process for past 30 days
+    try {
+      console.log('Starting historical sales data recovery...');
+      
+      // Run in background to not block app startup
+      setTimeout(async () => {
+        try {
+          const result = await fetchHistoricalSales();
+          console.log('Historical data recovery completed in background:', result);
+        } catch (error) {
+          console.error('Error in background historical data recovery:', error);
+        }
+      }, 5000); // Start after 5 seconds to allow app to initialize
+      
+    } catch (error) {
+      console.error('Error starting historical data recovery:', error);
+    }
   };
   
   // IPC handlers for sales API
@@ -980,6 +1218,214 @@ function setupSalesAPI(ipcMain) {
       };
     }
   });
+  
+  // Get sales settings
+  ipcMain.handle('getSalesSettings', async () => {
+    try {
+      const db = require('./db');
+      const settings = await db.getSalesSettings();
+      return {
+        success: true,
+        settings
+      };
+    } catch (error) {
+      console.error('Error getting sales settings:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  });
+  
+  // Update sales settings
+  ipcMain.handle('updateSalesSettings', async (event, settings) => {
+    try {
+      const db = require('./db');
+      await db.updateSalesSettings(settings);
+      return {
+        success: true
+      };
+    } catch (error) {
+      console.error('Error updating sales settings:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  });
+  
+  // Cancel sales scheduled message
+  ipcMain.handle('cancelSalesScheduledMessage', async (event, messageId) => {
+    try {
+      const db = require('./db');
+      const result = await db.cancelSalesScheduledMessage(messageId);
+      return {
+        success: true,
+        ...result
+      };
+    } catch (error) {
+      console.error('Error canceling sales scheduled message:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  });
+  
+  // Delete sales scheduled messages
+  ipcMain.handle('deleteSalesScheduledMessages', async (event, messageIds) => {
+    try {
+      const db = require('./db');
+      const result = await db.deleteSalesScheduledMessages(messageIds);
+      return {
+        success: true,
+        ...result
+      };
+    } catch (error) {
+      console.error('Error deleting sales scheduled messages:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  });
+  
+  // Get sales message statistics
+  ipcMain.handle('getSalesMessageStatistics', async (event, startDate, endDate) => {
+    try {
+      const db = require('./db');
+      const result = await db.getSalesMessageStatistics(startDate, endDate);
+      return {
+        success: true,
+        ...result
+      };
+    } catch (error) {
+      console.error('Error getting sales message statistics:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  });
+  
+  // Manually fetch historical sales data
+  ipcMain.handle('fetchHistoricalSales', async () => {
+    try {
+      const result = await fetchHistoricalSales();
+      return {
+        success: true,
+        ...result
+      };
+    } catch (error) {
+      console.error('Error fetching historical sales:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  });
+  
+  // Function to fetch sales data for a specific town and date
+  const fetchSalesForTownAndDate = async (token, town, date) => {
+    try {
+      // Format date as MM/DD/YYYY for API
+      const dateString = `${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getDate().toString().padStart(2, '0')}/${date.getFullYear()}`;
+      
+      console.log(`Fetching sales for ${town} on ${dateString}`);
+      
+      const response = await axios.get(`https://crm-api.bss.com.al/11120/Sales?Date=${dateString}&PageNumber=&PageSize=&HasPhone=true&CustomerGroup=PAKICE&Town=${town}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      return response.data;
+    } catch (error) {
+      console.error(`Error fetching sales for town ${town} on date ${date}:`, error);
+      return [];
+    }
+  };
+
+  // Function to fetch historical sales data for the past 30 days
+  const fetchHistoricalSales = async () => {
+    console.log('Starting historical sales recovery for past 30 days...');
+    try {
+      // Get auth token
+      const token = await getAuthToken();
+      
+      // Get current date
+      const today = new Date();
+      today.setHours(0, 0, 0, 0); // Start of day
+      
+      // Towns to fetch for
+      const towns = ['tirane', 'fier', 'vlore'];
+      
+      // Fetch sales for each day in the past 30 days
+      let allHistoricalSales = [];
+      let processedDays = 0;
+      let totalSalesFetched = 0;
+      
+      // Loop through each day
+      for (let i = 1; i <= 30; i++) {
+        // Calculate the date (i days ago)
+        const targetDate = new Date(today);
+        targetDate.setDate(today.getDate() - i);
+        
+        // Fetch for each town on this date
+        for (const town of towns) {
+          const salesForTown = await fetchSalesForTownAndDate(token, town, targetDate);
+          
+          if (Array.isArray(salesForTown) && salesForTown.length > 0) {
+            console.log(`Found ${salesForTown.length} sales for ${town} on ${targetDate.toLocaleDateString()}`);
+            allHistoricalSales = [...allHistoricalSales, ...salesForTown];
+            totalSalesFetched += salesForTown.length;
+          }
+        }
+        
+        processedDays++;
+        
+        // Log progress every 5 days
+        if (processedDays % 5 === 0) {
+          console.log(`Historical data recovery progress: ${processedDays}/30 days processed, ${totalSalesFetched} sales found so far`);
+        }
+      }
+      
+      // Save all fetched sales to database (this will automatically handle duplicates)
+      const db = require('./db');
+      const saveResult = await db.saveSales(allHistoricalSales);
+      
+      console.log(`Historical data recovery complete: ${saveResult.newSalesCount} new sales added to database out of ${totalSalesFetched} total fetched`);
+      
+      // Important: Only schedule messages for today's sales
+      // We extract just today's sales from the newly saved ones
+      const todayDateStr = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+      const todayNewSales = saveResult.newSales.filter(sale => {
+        // Check if documentDate matches today's date
+        const saleDate = new Date(sale.documentDate).toISOString().split('T')[0];
+        return saleDate === todayDateStr;
+      });
+      
+      // Only schedule WhatsApp messages for today's sales
+      if (todayNewSales.length > 0) {
+        console.log(`Scheduling WhatsApp messages only for ${todayNewSales.length} sales from today`);
+        await scheduleMessagesForNewSales(todayNewSales);
+      }
+      
+      return {
+        daysProcessed: processedDays,
+        totalSalesFetched,
+        newSalesCount: saveResult.newSalesCount
+      };
+    } catch (error) {
+      console.error('Error fetching historical sales:', error);
+      return {
+        error: error.message,
+        daysProcessed: 0,
+        totalSalesFetched: 0,
+        newSalesCount: 0
+      };
+    }
+  };
   
   // Initialize the sales API
   initSalesAPI();

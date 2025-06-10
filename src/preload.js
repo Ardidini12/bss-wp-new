@@ -101,7 +101,24 @@ contextBridge.exposeInMainWorld('electronAPI', {
   deleteSales: (saleIds) => ipcRenderer.invoke('deleteSales', saleIds),
   getLastFetchTime: () => ipcRenderer.invoke('getLastFetchTime'),
   fetchSalesNow: () => ipcRenderer.invoke('fetchSalesNow'),
+  fetchHistoricalSales: () => ipcRenderer.invoke('fetchHistoricalSales'),
   getSalesTowns: () => ipcRenderer.invoke('getSalesTowns'),
+  
+  // Sales Settings and Scheduled Messages
+  getSalesSettings: () => ipcRenderer.invoke('getSalesSettings'),
+  updateSalesSettings: (settings) => ipcRenderer.invoke('updateSalesSettings', settings),
+  getSalesScheduledMessages: (page, limit, filters) => 
+    ipcRenderer.invoke('getSalesScheduledMessages', page, limit, filters),
+  cancelSalesScheduledMessage: (messageId) => 
+    ipcRenderer.invoke('cancelSalesScheduledMessage', messageId),
+  deleteSalesScheduledMessages: (messageIds) => 
+    ipcRenderer.invoke('deleteSalesScheduledMessages', messageIds),
+  getSalesMessageStatistics: (startDate, endDate) => 
+    ipcRenderer.invoke('getSalesMessageStatistics', startDate, endDate),
+  
+  // Track WhatsApp message status for sales messages
+  trackSalesMessageStatus: (userId, whatsappMessageId, salesMessageId) =>
+    ipcRenderer.invoke('trackSalesMessageStatus', userId, whatsappMessageId, salesMessageId),
 });
 
 // Set up listeners for WhatsApp events
