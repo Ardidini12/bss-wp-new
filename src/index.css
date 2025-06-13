@@ -712,3 +712,106 @@ body.dark-theme .user-card {
     width: 100%;
   }
 }
+
+/* Emoji picker styles */
+.emoji-picker-container {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 5px;
+}
+
+.emoji-btn {
+  font-size: 1.2rem;
+  padding: 5px;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+}
+
+.emoji-btn:hover {
+  background-color: #e9ecef;
+}
+
+/* Formatting buttons */
+.btn-outline-primary {
+  border-width: 1px;
+  margin-right: 5px;
+}
+
+.btn-outline-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.btn-outline-primary:active {
+  transform: translateY(0);
+}
+
+.btn-outline-secondary {
+  border-width: 1px;
+  margin-right: 5px;
+}
+
+/* Undo/Redo buttons */
+button[title="Undo"],
+button[title="Redo"] {
+  margin-left: 5px;
+  background-color: #f8f9fa;
+}
+
+button[title="Undo"] i,
+button[title="Redo"] i {
+  margin-right: 4px;
+}
+
+button[title="Undo"]:disabled,
+button[title="Redo"]:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Template preview styling */
+.preview-content {
+  min-height: 100px;
+  padding: 15px;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  background-color: #ffffff;
+  white-space: pre-wrap;
+  word-break: break-word;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.05);
+  font-size: 1rem;
+  line-height: 1.5;
+  color: #212529;
+}
+
+.preview-content .text-muted {
+  color: #6c757d;
+  font-style: italic;
+}
+
+.preview-content strong {
+  font-weight: bold;
+}
+
+.preview-content em {
+  font-style: italic;
+}
+
+.preview-content s {
+  text-decoration: line-through;
+}
+
+.preview-content code {
+  font-family: monospace;
+  background-color: #f0f0f0;
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-size: 0.9em;
+}

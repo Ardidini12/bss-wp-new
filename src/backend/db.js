@@ -329,11 +329,16 @@ function verifyToken(token) {
 // Contact Management Functions
 
 // Get contacts with pagination and search
-function getContacts(page = 1, limit = 100, search = "") {
+function getContacts(page = 1, limit = 100, search = "", source = null) {
   return new Promise((resolve, reject) => {
     try {
       const contactsData = readContacts();
       let filteredContacts = contactsData.contacts;
+      
+      // Filter by source if provided
+      if (source) {
+        filteredContacts = filteredContacts.filter(contact => contact.source === source);
+      }
       
       // Apply search filter if provided
       if (search) {
@@ -623,11 +628,16 @@ function exportContacts(format = 'json') {
 }
 
 // Get all contact IDs (for bulk operations)
-function getAllContactIds(search = "") {
+function getAllContactIds(search = "", source = null) {
   return new Promise((resolve, reject) => {
     try {
       const contactsData = readContacts();
       let filteredContacts = contactsData.contacts;
+      
+      // Filter by source if provided
+      if (source) {
+        filteredContacts = filteredContacts.filter(contact => contact.source === source);
+      }
       
       // If search term is provided, filter contacts
       if (search) {

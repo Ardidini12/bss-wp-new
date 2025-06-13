@@ -1,0 +1,714 @@
+@import 'bootstrap/dist/css/bootstrap.min.css';
+@import 'bootstrap-icons/font/bootstrap-icons.css';
+
+:root {
+  /* Default colors - will be overridden by JS when logo colors are extracted */
+  --color-primary: #3366cc;
+  --color-primaryLight: #5c85d6;
+  --color-primaryDark: #244c99;
+  --color-secondary: #ff9900;
+  --color-secondaryLight: #ffb13d;
+  --color-secondaryDark: #cc7a00;
+  --color-accent: #33cc99;
+  --color-textOnPrimary: #ffffff;
+  --color-textOnSecondary: #000000;
+  
+  /* Light theme colors */
+  --color-background-light: #f8f9fa;
+  --color-surface-light: #ffffff;
+  --color-text-light: #212529;
+  --color-border-light: #dee2e6;
+  
+  /* Dark theme colors */
+  --color-background-dark: #212529;
+  --color-surface-dark: #343a40;
+  --color-text-dark: #f8f9fa;
+  --color-border-dark: #495057;
+  
+  /* Animation properties */
+  --transition-speed: 0.3s;
+  --animations-enabled: 1;
+  
+  /* WhatsApp colors */
+  --whatsapp-green: #25D366;
+  --whatsapp-light-green: #DCF8C6;
+  --whatsapp-blue: #34B7F1;
+  --whatsapp-gray: #ECE5DD;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  margin: 0;
+  padding: 0;
+  height: 100vh;
+  overflow: hidden;
+  transition: background-color var(--transition-speed) ease, color var(--transition-speed) ease;
+}
+
+#root {
+  height: 100vh;
+}
+
+/* Theme classes */
+body.light-theme {
+  background-color: var(--color-background-light);
+  color: var(--color-text-light);
+}
+
+body.dark-theme {
+  background-color: var(--color-background-dark);
+  color: var(--color-text-dark);
+}
+
+/* Custom elements styling */
+.btn-primary {
+  background-color: var(--color-primary);
+  border-color: var(--color-primaryDark);
+  color: var(--color-textOnPrimary);
+  transition: all var(--transition-speed) ease;
+}
+
+.btn-primary:hover {
+  background-color: var(--color-primaryDark);
+  border-color: var(--color-primaryDark);
+  transform: scale(1.03);
+}
+
+.btn-secondary {
+  background-color: var(--color-secondary);
+  border-color: var(--color-secondaryDark);
+  color: var(--color-textOnSecondary);
+  transition: all var(--transition-speed) ease;
+}
+
+.btn-secondary:hover {
+  background-color: var(--color-secondaryDark);
+  border-color: var(--color-secondaryDark);
+  transform: scale(1.03);
+}
+
+.card {
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  transition: all var(--transition-speed) ease;
+}
+
+.card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 12px 20px rgba(0, 0, 0, 0.2);
+}
+
+/* Theme-specific components */
+body.light-theme .card {
+  background-color: var(--color-surface-light);
+  color: var(--color-text-light);
+  border-color: var(--color-border-light);
+}
+
+body.dark-theme .card {
+  background-color: var(--color-surface-dark);
+  color: var(--color-text-dark);
+  border-color: var(--color-border-dark);
+}
+
+body.light-theme .form-control,
+body.light-theme .form-select {
+  background-color: var(--color-surface-light);
+  color: var(--color-text-light);
+  border-color: var(--color-border-light);
+  transition: all var(--transition-speed) ease;
+}
+
+body.dark-theme .form-control,
+body.dark-theme .form-select {
+  background-color: var(--color-surface-dark);
+  color: var(--color-text-dark);
+  border-color: var(--color-border-dark);
+  transition: all var(--transition-speed) ease;
+}
+
+/* Input focus effect */
+.form-control:focus,
+.form-select:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 0.25rem rgba(var(--color-primary-rgb), 0.25);
+  transform: scale(1.01);
+}
+
+/* Custom toggle switch */
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 50px;
+  height: 24px;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #ccc;
+  border-radius: 24px;
+  transition: var(--transition-speed);
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  border-radius: 50%;
+  transition: var(--transition-speed);
+}
+
+input:checked + .slider {
+  background-color: var(--color-primary);
+}
+
+input:focus + .slider {
+  box-shadow: 0 0 1px var(--color-primary);
+}
+
+input:checked + .slider:before {
+  transform: translateX(26px);
+}
+
+/* Custom title bar */
+.title-bar {
+  -webkit-app-region: drag;
+  background-color: var(--color-primary);
+  color: var(--color-textOnPrimary);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 16px;
+  height: 38px;
+}
+
+.title-bar-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.title-bar-controls {
+  -webkit-app-region: no-drag;
+  display: flex;
+  gap: 8px;
+}
+
+.title-bar-button {
+  border: none;
+  background: transparent;
+  color: var(--color-textOnPrimary);
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color var(--transition-speed) ease;
+}
+
+.title-bar-button:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+.title-bar-button.close:hover {
+  background-color: #e81123;
+}
+
+/* App logo animation */
+.app-logo {
+  transition: all var(--transition-speed) ease;
+}
+
+.app-logo:hover {
+  transform: rotate(5deg) scale(1.1);
+}
+
+/* Splash screen */
+.splash-screen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  background-color: var(--color-primary);
+  z-index: 1000;
+  transition: opacity 0.5s ease;
+}
+
+.splash-logo {
+  width: 150px;
+  height: auto;
+  margin-bottom: 20px;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.splash-spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  border-top-color: white;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+/* Auth pages */
+.auth-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: calc(100vh - 38px); /* Adjusted for titlebar height */
+  padding: 20px;
+}
+
+.auth-form {
+  width: 100%;
+  max-width: 400px;
+  padding: 30px;
+  border-radius: 10px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+  transition: all var(--transition-speed) ease;
+}
+
+.auth-form:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 12px 25px rgba(0, 0, 0, 0.2);
+}
+
+.auth-logo {
+  display: block;
+  width: 100px;
+  height: auto;
+  margin: 0 auto 20px;
+}
+
+/* Dashboard */
+.dashboard-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.dashboard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px;
+  border-bottom: 2px solid var(--color-primaryLight);
+  z-index: 10;
+}
+
+.dashboard-body {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.dashboard-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+/* Sidebar styles */
+.sidebar {
+  width: 220px;
+  height: 100%;
+  padding: 20px 0;
+  overflow-y: auto;
+  transition: all var(--transition-speed) ease;
+}
+
+.sidebar-menu {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.sidebar-item {
+  display: flex;
+  align-items: center;
+  padding: 12px 20px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: all var(--transition-speed) ease;
+}
+
+.sidebar-item:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.sidebar-icon {
+  margin-right: 12px;
+  font-size: 18px;
+}
+
+.sidebar-text {
+  font-weight: 500;
+}
+
+/* Theme toggle switch */
+.theme-switch-container {
+  display: flex;
+  align-items: center;
+}
+
+.theme-switch {
+  position: relative;
+  display: inline-block;
+  width: 60px;
+  height: 28px;
+  margin: 0;
+}
+
+.theme-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.theme-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #ccc;
+  border-radius: 28px;
+  transition: var(--transition-speed);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 4px;
+}
+
+.theme-slider:before {
+  position: absolute;
+  content: "";
+  height: 20px;
+  width: 20px;
+  left: 4px;
+  bottom: 4px;
+  background-color: white;
+  border-radius: 50%;
+  transition: var(--transition-speed);
+  z-index: 2;
+}
+
+input:checked + .theme-slider {
+  background-color: var(--color-primary);
+}
+
+input:focus + .theme-slider {
+  box-shadow: 0 0 1px var(--color-primary);
+}
+
+input:checked + .theme-slider:before {
+  transform: translateX(32px);
+}
+
+.theme-icon {
+  font-size: 14px;
+  z-index: 1;
+}
+
+.theme-icon-sun {
+  margin-right: 4px;
+}
+
+.theme-icon-moon {
+  margin-left: 4px;
+}
+
+.system-theme-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 28px;
+  border-radius: 5px;
+  transition: all var(--transition-speed) ease;
+}
+
+.system-icon {
+  font-size: 16px;
+}
+
+/* Settings container */
+.settings-container {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+/* Theme-specific styling for sidebar */
+body.light-theme .sidebar {
+  background-color: var(--color-primaryLight);
+  color: var(--color-textOnPrimary);
+}
+
+body.dark-theme .sidebar {
+  background-color: var(--color-primaryDark);
+  color: var(--color-textOnPrimary);
+}
+
+/* WhatsApp Contact styles */
+.whatsapp-contact-container {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  margin-bottom: 15px;
+}
+
+.wa-sidebar-pic {
+  width: 45px;
+  height: 45px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid white;
+}
+
+.wa-sidebar-placeholder {
+  width: 45px;
+  height: 45px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  color: white;
+  border: 2px solid white;
+}
+
+.wa-sidebar-info {
+  font-size: 0.85rem;
+}
+
+.wa-sidebar-name {
+  font-weight: bold;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
+}
+
+.wa-sidebar-number {
+  font-size: 0.75rem;
+  opacity: 0.8;
+}
+
+.wa-sidebar-status {
+  display: flex;
+  align-items: center;
+  font-size: 0.7rem;
+  margin-top: 2px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 5px;
+}
+
+.status-dot.connected {
+  background-color: var(--whatsapp-green);
+}
+
+.status-dot.disconnected {
+  background-color: var(--color-secondary);
+}
+
+.wa-status-icon {
+  font-size: 1.5rem;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.wa-status-icon.disconnected i {
+  opacity: 0.6;
+}
+
+.sidebar-divider {
+  height: 1px;
+  background-color: rgba(255, 255, 255, 0.2);
+  margin: 0 15px 15px;
+}
+
+/* WhatsApp Connect styles */
+.whatsapp-connect-container {
+  max-width: 100%;
+}
+
+.connection-status {
+  display: flex;
+  flex-direction: column;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  margin-left: 8px;
+  text-transform: capitalize;
+}
+
+.status-connected {
+  background-color: var(--whatsapp-green);
+  color: white;
+}
+
+.status-authenticated {
+  background-color: var(--whatsapp-blue);
+  color: white;
+}
+
+.status-disconnected, .status-error, .status-auth-failed {
+  background-color: #dc3545;
+  color: white;
+}
+
+.status-qr-ready, .status-session-exists {
+  background-color: var(--color-secondary);
+  color: white;
+}
+
+.status-connecting, .status-checking {
+  background-color: #6c757d;
+  color: white;
+}
+
+.qr-canvas {
+  display: block;
+  margin: 0 auto;
+  padding: 15px;
+  background-color: white;
+  border-radius: 8px;
+  max-width: 100%;
+  height: auto;
+}
+
+.wa-profile-pic {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.wa-profile-placeholder {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 1.5rem;
+  font-weight: bold;
+}
+
+.user-card {
+  background-color: rgba(0, 0, 0, 0.03);
+}
+
+body.dark-theme .user-card {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+/* Bulk Contacts Styles */
+.bulk-contacts-container {
+  width: 100%;
+}
+
+.bulk-contacts-container .card {
+  margin-bottom: 20px;
+}
+
+.bulk-contacts-container .table {
+  margin-bottom: 0;
+}
+
+.bulk-contacts-container .table-responsive {
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.bulk-contacts-container .table th,
+.bulk-contacts-container .table td {
+  vertical-align: middle;
+  padding: 0.5rem;
+}
+
+.bulk-contacts-container .form-check {
+  display: flex;
+  justify-content: center;
+}
+
+.bulk-contacts-container .nav-tabs {
+  margin-bottom: 1rem;
+}
+
+.bulk-contacts-container .table-danger {
+  background-color: rgba(255, 0, 0, 0.1);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .bulk-contacts-container .card-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .bulk-contacts-container .card-header .btn-group,
+  .bulk-contacts-container .card-header .d-flex {
+    margin-top: 10px;
+    width: 100%;
+  }
+}

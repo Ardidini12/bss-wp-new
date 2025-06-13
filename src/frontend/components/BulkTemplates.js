@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useTheme } from './ThemeContext';
 
 const BulkTemplates = () => {
   const { colors } = useTheme();
   const [templates, setTemplates] = useState([]);
-  const [pagination, setPagination] = useState({ page: 1, limit: 100, total: 0, totalPages: 1 });
+  const [pagination, setPagination] = useState({ page: 1, limit: 10, total: 0, totalPages: 1 });
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -25,7 +25,13 @@ const BulkTemplates = () => {
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [imagePreview, setImagePreview] = useState(null);
-
+  const textareaRef = useRef(null);
+  
+  // History for undo/redo functionality
+  const [textHistory, setTextHistory] = useState([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
+  const [isUndoRedoAction, setIsUndoRedoAction] = useState(false);
+  
   // Load templates on component mount and when pagination/search changes
   const loadTemplates = useCallback(async () => {
     setLoading(true);
@@ -204,23 +210,75 @@ const BulkTemplates = () => {
     }
   };
   
-  // Handle form input changes
+  // Handle input changes
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     
     if (name === 'text') {
-      setFormData(prev => ({
-        ...prev,
+      // Update form data
+      setFormData({
+        ...formData,
         content: {
-          ...prev.content,
+          ...formData.content,
           text: value
         }
-      }));
+      });
+      
+      // Only add to history if not performing undo/redo
+      if (!isUndoRedoAction) {
+        // Add current text to history, removing any future history if we're not at the end
+        const newHistory = textHistory.slice(0, historyIndex + 1);
+        newHistory.push(value);
+        setTextHistory(newHistory);
+        setHistoryIndex(newHistory.length - 1);
+      } else {
+        // Reset the flag after applying undo/redo
+        setIsUndoRedoAction(false);
+      }
     } else {
-      setFormData(prev => ({
-        ...prev,
+      setFormData({
+        ...formData,
         [name]: value
-      }));
+      });
+    }
+    
+    // Clear any error messages when user types
+    if (error) setError('');
+  };
+  
+  // Undo function
+  const handleUndo = () => {
+    if (historyIndex > 0) {
+      setIsUndoRedoAction(true);
+      const newIndex = historyIndex - 1;
+      setHistoryIndex(newIndex);
+      
+      // Update form data with previous text
+      setFormData({
+        ...formData,
+        content: {
+          ...formData.content,
+          text: textHistory[newIndex]
+        }
+      });
+    }
+  };
+  
+  // Redo function
+  const handleRedo = () => {
+    if (historyIndex < textHistory.length - 1) {
+      setIsUndoRedoAction(true);
+      const newIndex = historyIndex + 1;
+      setHistoryIndex(newIndex);
+      
+      // Update form data with next text
+      setFormData({
+        ...formData,
+        content: {
+          ...formData.content,
+          text: textHistory[newIndex]
+        }
+      });
     }
   };
   
@@ -273,8 +331,8 @@ const BulkTemplates = () => {
     }
   };
   
-  // Show add template form
-  const showAddTemplateForm = () => {
+  // Reset form and switch to add view
+  const handleAddNew = () => {
     setFormData({
       name: '',
       content: {
@@ -282,13 +340,15 @@ const BulkTemplates = () => {
         images: []
       }
     });
-    setImagePreview(null);
-    setActiveView('add');
     setError('');
+    setActiveView('add');
+    // Initialize history for new template
+    setTextHistory(['']);
+    setHistoryIndex(0);
   };
   
-  // Show edit template form
-  const showEditTemplateForm = (template) => {
+  // Set up edit form with template data
+  const handleEdit = (template) => {
     setTemplateToEdit(template);
     setFormData({
       name: template.name,
@@ -297,11 +357,11 @@ const BulkTemplates = () => {
         images: template.content.images || []
       }
     });
-    setImagePreview(template.content.images && template.content.images.length > 0 
-      ? template.content.images[0] 
-      : null);
-    setActiveView('edit');
     setError('');
+    setActiveView('edit');
+    // Initialize history with current text
+    setTextHistory([template.content.text || '']);
+    setHistoryIndex(0);
   };
   
   // Handle add template
@@ -385,6 +445,112 @@ const BulkTemplates = () => {
     }
   };
   
+  // Insert formatting markers around selected text or at cursor position
+  const insertFormatting = (startMarker, endMarker) => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const text = formData.content.text;
+    let newText;
+    
+    // If text is selected, wrap it with formatting markers
+    if (start !== end) {
+      const selectedText = text.substring(start, end);
+      newText = text.substring(0, start) + startMarker + selectedText + endMarker + text.substring(end);
+    } else {
+      // If no text is selected, insert markers and place cursor between them
+      newText = text.substring(0, start) + startMarker + endMarker + text.substring(end);
+    }
+    
+    // Update form data
+    setFormData({
+      ...formData,
+      content: {
+        ...formData.content,
+        text: newText
+      }
+    });
+    
+    // Add to history
+    const newHistory = textHistory.slice(0, historyIndex + 1);
+    newHistory.push(newText);
+    setTextHistory(newHistory);
+    setHistoryIndex(newHistory.length - 1);
+    
+    // Set cursor position after the operation
+    setTimeout(() => {
+      textarea.focus();
+      if (start !== end) {
+        textarea.setSelectionRange(start + startMarker.length, end + startMarker.length);
+      } else {
+        textarea.setSelectionRange(start + startMarker.length, start + startMarker.length);
+      }
+    }, 10);
+  };
+  
+  // Insert special character at cursor position
+  const insertCharacter = (char) => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const text = formData.content.text;
+    
+    // Insert the character at cursor position
+    const newText = text.substring(0, start) + char + text.substring(end);
+    
+    // Update form data
+    setFormData({
+      ...formData,
+      content: {
+        ...formData.content,
+        text: newText
+      }
+    });
+    
+    // Add to history
+    const newHistory = textHistory.slice(0, historyIndex + 1);
+    newHistory.push(newText);
+    setTextHistory(newHistory);
+    setHistoryIndex(newHistory.length - 1);
+    
+    // Move cursor after the inserted character
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start + char.length, start + char.length);
+    }, 10);
+  };
+  
+  // Format preview text with WhatsApp styling
+  const formatPreview = (text) => {
+    if (!text) return '<div class="text-muted">Preview will appear here when you add content...</div>';
+    
+    // Create a copy of the text to work with
+    let formattedText = text;
+    
+    // Process each formatting type in sequence
+    
+    // Bold: *text* -> <strong>text</strong>
+    formattedText = formattedText.replace(/\*([^*]+)\*/g, '<strong>$1</strong>');
+    
+    // Italic: _text_ -> <em>text</em>
+    formattedText = formattedText.replace(/_([^_]+)_/g, '<em>$1</em>');
+    
+    // Strikethrough: ~text~ -> <s>text</s>
+    formattedText = formattedText.replace(/~([^~]+)~/g, '<s>$1</s>');
+    
+    // Monospace: ```text``` -> <code>text</code>
+    formattedText = formattedText.replace(/```([^`]+)```/g, '<code>$1</code>');
+    
+    // Replace newlines with <br>
+    formattedText = formattedText.replace(/\n/g, '<br>');
+    
+    return formattedText;
+  };
+  
   // Render template form (for both add and edit)
   const renderTemplateForm = () => {
     return (
@@ -424,6 +590,102 @@ const BulkTemplates = () => {
             
             <div className="mb-3">
               <label htmlFor="text" className="form-label">Template Content</label>
+              <div className="d-flex justify-content-between align-items-center mb-2">
+                <div className="d-flex flex-wrap gap-1">
+                  <button 
+                    type="button" 
+                    className="btn btn-sm btn-outline-primary" 
+                    onClick={() => insertFormatting('*', '*')}
+                    title="Bold"
+                  >
+                    <i className="bi bi-type-bold"></i> Bold
+                  </button>
+                  <button 
+                    type="button" 
+                    className="btn btn-sm btn-outline-primary" 
+                    onClick={() => insertFormatting('_', '_')}
+                    title="Italic"
+                  >
+                    <i className="bi bi-type-italic"></i> Italic
+                  </button>
+                  <button 
+                    type="button" 
+                    className="btn btn-sm btn-outline-primary" 
+                    onClick={() => insertFormatting('~', '~')}
+                    title="Strikethrough"
+                  >
+                    <i className="bi bi-type-strikethrough"></i> Strikethrough
+                  </button>
+                  <button 
+                    type="button" 
+                    className="btn btn-sm btn-outline-primary" 
+                    onClick={() => insertFormatting('```', '```')}
+                    title="Monospace"
+                  >
+                    <i className="bi bi-code"></i> Monospace
+                  </button>
+                </div>
+                
+                <div className="d-flex gap-1">
+                  <button 
+                    type="button" 
+                    className="btn btn-sm btn-outline-secondary" 
+                    onClick={handleUndo}
+                    disabled={historyIndex <= 0}
+                    title="Undo"
+                  >
+                    <i className="bi bi-arrow-counterclockwise"></i> Undo
+                  </button>
+                  <button 
+                    type="button" 
+                    className="btn btn-sm btn-outline-secondary" 
+                    onClick={handleRedo}
+                    disabled={historyIndex >= textHistory.length - 1}
+                    title="Redo"
+                  >
+                    <i className="bi bi-arrow-clockwise"></i> Redo
+                  </button>
+                </div>
+              </div>
+              
+              <div className="d-flex flex-wrap mb-2 gap-1">
+                <span className="me-2 d-flex align-items-center">
+                  <small className="text-muted">Albanian Characters:</small>
+                </span>
+                <button 
+                  type="button" 
+                  className="btn btn-sm btn-outline-secondary" 
+                  onClick={() => insertCharacter('Ç')}
+                  title="Ç"
+                >
+                  Ç
+                </button>
+                <button 
+                  type="button" 
+                  className="btn btn-sm btn-outline-secondary" 
+                  onClick={() => insertCharacter('ç')}
+                  title="ç"
+                >
+                  ç
+                </button>
+                <button 
+                  type="button" 
+                  className="btn btn-sm btn-outline-secondary" 
+                  onClick={() => insertCharacter('Ë')}
+                  title="Ë"
+                >
+                  Ë
+                </button>
+                <button 
+                  type="button" 
+                  className="btn btn-sm btn-outline-secondary" 
+                  onClick={() => insertCharacter('ë')}
+                  title="ë"
+                >
+                  ë
+                </button>
+              </div>
+              
               <textarea
                 className="form-control"
                 id="text"
@@ -432,7 +694,20 @@ const BulkTemplates = () => {
                 onChange={handleInputChange}
                 placeholder="Enter template content"
                 rows="5"
+                ref={textareaRef}
               />
+              
+              <div className="mt-3">
+                <div className="card">
+                  <div className="card-header bg-light d-flex justify-content-between align-items-center">
+                    <h6 className="mb-0">Message Preview</h6>
+                    <small className="text-muted">See how your message will appear in WhatsApp</small>
+                  </div>
+                  <div className="card-body bg-light">
+                    <div className="preview-content" dangerouslySetInnerHTML={{ __html: formatPreview(formData.content.text) }}></div>
+                  </div>
+                </div>
+              </div>
             </div>
             
             <div className="mb-3">
@@ -458,6 +733,21 @@ const BulkTemplates = () => {
                   <li><code>{'{day}'}</code> - Current day of month</li>
                   <li><code>{'{month}'}</code> - Current month number</li>
                   <li><code>{'{year}'}</code> - Current year</li>
+                </ul>
+              </div>
+            </div>
+            
+            <div className="mb-3">
+              <div className="alert alert-info">
+                <h6>WhatsApp Formatting</h6>
+                <p className="mb-2">
+                  You can format your text using these WhatsApp formatting options:
+                </p>
+                <ul className="mb-0">
+                  <li><code>*bold*</code> - Makes text <strong>bold</strong></li>
+                  <li><code>_italic_</code> - Makes text <em>italic</em></li>
+                  <li><code>~strikethrough~</code> - Makes text <s>strikethrough</s></li>
+                  <li><code>```monospace```</code> - Makes text <code>monospace</code></li>
                 </ul>
               </div>
             </div>
@@ -536,7 +826,7 @@ const BulkTemplates = () => {
           <div>
             <button 
               className="btn btn-sm btn-primary me-2"
-              onClick={showAddTemplateForm}
+              onClick={handleAddNew}
             >
               Add New Template
             </button>
@@ -676,7 +966,7 @@ const BulkTemplates = () => {
                         <td>
                           <button
                             className="btn btn-sm btn-primary me-1"
-                            onClick={() => showEditTemplateForm(template)}
+                            onClick={() => handleEdit(template)}
                           >
                             Edit
                           </button>

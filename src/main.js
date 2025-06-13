@@ -41,22 +41,23 @@ const findLogoPath = () => {
 
 const logoPath = findLogoPath();
 
-// Copy logo to webpack output directory
-const copyLogoToOutput = () => {
-  if (!logoPath) return;
-  
-  const outputDir = path.join(__dirname, 'assets');
-  if (!fs.existsSync(outputDir)) {
-    fs.mkdirSync(outputDir, { recursive: true });
+// Create dist directory if it doesn't exist
+const ensureDistDirectory = () => {
+  const distDir = path.join(__dirname, '..', 'dist');
+  if (!fs.existsSync(distDir)) {
+    fs.mkdirSync(distDir, { recursive: true });
   }
   
-  const outputPath = path.join(outputDir, path.basename(logoPath));
-  if (!fs.existsSync(outputPath)) {
+  // Copy CSS file to dist directory if it doesn't exist
+  const srcCssPath = path.join(__dirname, 'index.css');
+  const distCssPath = path.join(distDir, 'index.css');
+  
+  if (fs.existsSync(srcCssPath) && !fs.existsSync(distCssPath)) {
     try {
-      fs.copyFileSync(logoPath, outputPath);
-      console.log('Copied logo to:', outputPath);
+      fs.copyFileSync(srcCssPath, distCssPath);
+      console.log('Copied CSS to:', distCssPath);
     } catch (error) {
-      console.error('Error copying logo:', error);
+      console.error('Error copying CSS:', error);
     }
   }
 };
@@ -67,20 +68,20 @@ const createWindow = () => {
     width: 1024,
     height: 768,
     webPreferences: {
-      preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
+      preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
       contextIsolation: true,
-      webSecurity: false, // Disable web security completely
+      webSecurity: false,
       additionalArguments: [
         `--js-flags=--max-old-space-size=4096`,
         `--disable-web-security`
       ]
     },
     icon: logoPath,
-    frame: false, // Frameless window for custom titlebar
+    frame: false,
     transparent: false,
     backgroundColor: '#ffffff',
-    show: false // Don't show until ready-to-show
+    show: false
   });
 
   // Disable CSP completely
@@ -88,15 +89,14 @@ const createWindow = () => {
     callback({
       responseHeaders: {
         ...details.responseHeaders,
-        // Remove any CSP headers if they exist
         'Content-Security-Policy': [],
         'Content-Security-Policy-Report-Only': []
       }
     });
   });
 
-  // and load the index.html of the app.
-  global.mainWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
+  // Load the index.html of the app
+  global.mainWindow.loadFile(path.join(__dirname, 'index.html'));
 
   // Apply theme from settings
   const theme = getAppTheme();
@@ -199,7 +199,7 @@ const startAllMessageSchedulers = () => {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(() => {
-  copyLogoToOutput();
+  ensureDistDirectory();
   createWindow();
   createTray();
   

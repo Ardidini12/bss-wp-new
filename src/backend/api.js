@@ -125,9 +125,9 @@ function initApi() {
   // CONTACTS API
 
   // Get all contacts (with pagination and search)
-  ipcMain.handle('get-contacts', async (event, { page, limit, search }) => {
+  ipcMain.handle('get-contacts', async (event, { page, limit, search, source }) => {
     try {
-      const result = await getContacts(page, limit, search);
+      const result = await getContacts(page, limit, search, source);
       return { success: true, ...result };
     } catch (error) {
       return { success: false, error: error.message };
@@ -135,9 +135,9 @@ function initApi() {
   });
 
   // Get all contact IDs (for bulk operations like select all)
-  ipcMain.handle('get-all-contact-ids', async (event, { search }) => {
+  ipcMain.handle('get-all-contact-ids', async (event, { search, source }) => {
     try {
-      const contactIds = await getAllContactIds(search);
+      const contactIds = await getAllContactIds(search, source);
       return { success: true, contactIds };
     } catch (error) {
       return { success: false, error: error.message };

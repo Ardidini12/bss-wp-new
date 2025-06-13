@@ -31,6 +31,8 @@ const BulkSender = () => {
   const [contactsPagination, setContactsPagination] = useState({ page: 1, limit: 100, total: 0, totalPages: 1 });
   const [contactsSearch, setContactsSearch] = useState('');
   const [contactsLoading, setContactsLoading] = useState(false);
+  const [expandedSources, setExpandedSources] = useState({});
+  const [sourcesPagination, setSourcesPagination] = useState({});
   
   // Templates panel state
   const [templates, setTemplates] = useState([]);
@@ -369,31 +371,114 @@ const BulkSender = () => {
   };
   
   // Handle selecting all contacts from a specific source
-  const toggleSelectAllBySource = (source) => {
-    // Get all contact IDs from this source
-    const contactsFromSource = contacts.filter(c => c.source === source);
-    const contactIdsFromSource = contactsFromSource.map(c => c.id);
-    
+  const toggleSelectAllBySource = async (source) => {
     // Check if all contacts from this source are already selected
-    const allSelected = contactIdsFromSource.every(id => selectedContacts.includes(id));
+    const isCurrentlySelected = selectedSourcesAll[source] || false;
     
-    if (allSelected) {
-      // Remove all contacts from this source
-      setSelectedContacts(prev => prev.filter(id => !contactIdsFromSource.includes(id)));
-      setSelectedSourcesAll(prev => ({ ...prev, [source]: false }));
+    if (isCurrentlySelected) {
+      // Get all contact IDs from this source and remove them
+      try {
+        const response = await window.electronAPI.getAllContactIds(source);
+        if (response.success) {
+          const contactIdsFromSource = response.contactIds;
+          setSelectedContacts(prev => prev.filter(id => !contactIdsFromSource.includes(id)));
+          setSelectedSourcesAll(prev => ({ ...prev, [source]: false }));
+        }
+      } catch (err) {
+        setError('Error deselecting contacts: ' + err.message);
+      }
     } else {
       // Add all contacts from this source
-      const newSelected = [...selectedContacts];
-      
-      contactIdsFromSource.forEach(id => {
-        if (!newSelected.includes(id)) {
-          newSelected.push(id);
+      try {
+        const response = await window.electronAPI.getAllContactIds(source);
+        if (response.success) {
+          const contactIdsFromSource = response.contactIds;
+          
+          setSelectedContacts(prev => {
+            const newSelected = [...prev];
+            contactIdsFromSource.forEach(id => {
+              if (!newSelected.includes(id)) {
+                newSelected.push(id);
+              }
+            });
+            return newSelected;
+          });
+          
+          setSelectedSourcesAll(prev => ({ ...prev, [source]: true }));
         }
-      });
-      
-      setSelectedContacts(newSelected);
-      setSelectedSourcesAll(prev => ({ ...prev, [source]: true }));
+      } catch (err) {
+        setError('Error selecting contacts: ' + err.message);
+      }
     }
+  };
+  
+  // Toggle expanded state for a source
+  const toggleSourceExpanded = (source) => {
+    setExpandedSources(prev => {
+      const newState = { ...prev };
+      newState[source] = !prev[source];
+      return newState;
+    });
+    
+    // Initialize pagination for this source if not already done
+    if (!sourcesPagination[source]) {
+      setSourcesPagination(prev => ({
+        ...prev,
+        [source]: { page: 1, limit: 10, total: 0, totalPages: 1 }
+      }));
+    }
+    
+    // Load contacts for this source if expanded
+    if (!expandedSources[source]) {
+      loadContactsBySource(source);
+    }
+  };
+  
+  // Load contacts for a specific source
+  const loadContactsBySource = async (source) => {
+    if (!currentUser) return;
+    
+    setContactsLoading(true);
+    try {
+      const pagination = sourcesPagination[source] || { page: 1, limit: 10 };
+      const response = await window.electronAPI.getContacts(
+        pagination.page,
+        pagination.limit,
+        contactsSearch,
+        source
+      );
+      
+      if (response.success) {
+        // Update contacts for this source only
+        setContacts(prev => {
+          const otherSourceContacts = prev.filter(c => c.source !== source);
+          return [...otherSourceContacts, ...response.contacts];
+        });
+        
+        // Update pagination for this source
+        setSourcesPagination(prev => ({
+          ...prev,
+          [source]: response.pagination
+        }));
+      } else {
+        setError(response.error || 'Failed to load contacts');
+      }
+    } catch (err) {
+      setError('Error loading contacts: ' + err.message);
+    } finally {
+      setContactsLoading(false);
+    }
+  };
+  
+  // Handle contact page change for a specific source
+  const handleSourcePageChange = (source, newPage) => {
+    setSourcesPagination(prev => ({
+      ...prev,
+      [source]: { ...prev[source], page: newPage }
+    }));
+    
+    // Reload contacts for this source
+    loadContactsBySource(source);
   };
   
   // Handle contact search
@@ -406,11 +491,6 @@ const BulkSender = () => {
     e.preventDefault();
     setContactsPagination(prev => ({ ...prev, page: 1 }));
     loadContacts();
-  };
-  
-  // Handle contacts page change
-  const handleContactsPageChange = (newPage) => {
-    setContactsPagination(prev => ({ ...prev, page: newPage }));
   };
   
   // Handle template selection
@@ -835,13 +915,13 @@ const BulkSender = () => {
             </p>
           </div>
           
-          {contactsLoading ? (
+          {contactsLoading && !expandedSources ? (
             <div className="text-center py-4">
               <div className="spinner-border" role="status">
                 <span className="visually-hidden">Loading...</span>
               </div>
             </div>
-          ) : contacts.length === 0 ? (
+          ) : contactSources.length === 0 ? (
             <div className="alert alert-info" role="alert">
               No contacts found. Please add contacts to continue.
             </div>
@@ -849,16 +929,23 @@ const BulkSender = () => {
             <>
               {/* Group contacts by source */}
               {contactSources.map(source => {
+                const isExpanded = expandedSources[source] || false;
                 const contactsFromSource = contacts.filter(c => c.source === source);
-                
-                if (contactsFromSource.length === 0) {
-                  return null;
-                }
+                const sourcePagination = sourcesPagination[source] || { page: 1, limit: 10, total: 0, totalPages: 1 };
                 
                 return (
-                  <div key={source} className="mb-4">
-                    <div className="d-flex justify-content-between align-items-center mb-2">
-                      <h6 className="mb-0">{source} ({contactsFromSource.length})</h6>
+                  <div key={source} className="card mb-3">
+                    <div className="card-header d-flex justify-content-between align-items-center">
+                      <button 
+                        className="btn btn-link text-decoration-none text-start w-75"
+                        onClick={() => toggleSourceExpanded(source)}
+                        style={{ padding: 0 }}
+                      >
+                        <h6 className="mb-0">
+                          <i className={`bi ${isExpanded ? 'bi-chevron-down' : 'bi-chevron-right'} me-2`}></i>
+                          {source}
+                        </h6>
+                      </button>
                       <div className="form-check">
                         <input
                           type="checkbox"
@@ -873,81 +960,99 @@ const BulkSender = () => {
                       </div>
                     </div>
                     
-                    <div className="table-responsive">
-                      <table className="table table-hover">
-                        <thead>
-                          <tr>
-                            <th style={{ width: '40px' }}></th>
-                            <th>Name</th>
-                            <th>Phone</th>
-                            <th>Email</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {contactsFromSource.map(contact => (
-                            <tr key={contact.id}>
-                              <td>
-                                <div className="form-check">
-                                  <input
-                                    type="checkbox"
-                                    className="form-check-input"
-                                    checked={selectedContacts.includes(contact.id)}
-                                    onChange={() => toggleContactSelection(contact.id)}
-                                  />
-                                </div>
-                              </td>
-                              <td>{contact.name} {contact.surname}</td>
-                              <td>{contact.phone}</td>
-                              <td>{contact.email}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                    {isExpanded && (
+                      <div className="card-body p-0">
+                        {contactsLoading && expandedSources[source] ? (
+                          <div className="text-center py-4">
+                            <div className="spinner-border" role="status">
+                              <span className="visually-hidden">Loading...</span>
+                            </div>
+                          </div>
+                        ) : contactsFromSource.length === 0 ? (
+                          <div className="alert alert-info m-3" role="alert">
+                            No contacts found in this list.
+                          </div>
+                        ) : (
+                          <>
+                            <div className="table-responsive">
+                              <table className="table table-hover mb-0">
+                                <thead>
+                                  <tr>
+                                    <th style={{ width: '40px' }}></th>
+                                    <th>Name</th>
+                                    <th>Phone</th>
+                                    <th>Email</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {contactsFromSource.map(contact => (
+                                    <tr key={contact.id}>
+                                      <td>
+                                        <div className="form-check">
+                                          <input
+                                            type="checkbox"
+                                            className="form-check-input"
+                                            checked={selectedContacts.includes(contact.id)}
+                                            onChange={() => toggleContactSelection(contact.id)}
+                                          />
+                                        </div>
+                                      </td>
+                                      <td>{contact.name} {contact.surname}</td>
+                                      <td>{contact.phone}</td>
+                                      <td>{contact.email}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                            
+                            {/* Source-specific pagination */}
+                            {sourcePagination.totalPages > 1 && (
+                              <nav aria-label={`${source} pagination`} className="p-2 bg-light border-top">
+                                <ul className="pagination pagination-sm justify-content-center mb-0">
+                                  <li className={`page-item ${sourcePagination.page === 1 ? 'disabled' : ''}`}>
+                                    <button 
+                                      className="page-link" 
+                                      onClick={() => handleSourcePageChange(source, sourcePagination.page - 1)}
+                                      disabled={sourcePagination.page === 1}
+                                    >
+                                      Previous
+                                    </button>
+                                  </li>
+                                  
+                                  {[...Array(sourcePagination.totalPages)].map((_, index) => (
+                                    <li 
+                                      key={index} 
+                                      className={`page-item ${sourcePagination.page === index + 1 ? 'active' : ''}`}
+                                    >
+                                      <button
+                                        className="page-link"
+                                        onClick={() => handleSourcePageChange(source, index + 1)}
+                                      >
+                                        {index + 1}
+                                      </button>
+                                    </li>
+                                  ))}
+                                  
+                                  <li className={`page-item ${sourcePagination.page === sourcePagination.totalPages ? 'disabled' : ''}`}>
+                                    <button 
+                                      className="page-link" 
+                                      onClick={() => handleSourcePageChange(source, sourcePagination.page + 1)}
+                                      disabled={sourcePagination.page === sourcePagination.totalPages}
+                                    >
+                                      Next
+                                    </button>
+                                  </li>
+                                </ul>
+                              </nav>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               })}
-              
-              {/* Pagination */}
-              {contactsPagination.totalPages > 1 && (
-                <nav aria-label="Contacts pagination" className="mt-3">
-                  <ul className="pagination justify-content-center">
-                    <li className={`page-item ${contactsPagination.page === 1 ? 'disabled' : ''}`}>
-                      <button 
-                        className="page-link" 
-                        onClick={() => handleContactsPageChange(contactsPagination.page - 1)}
-                        disabled={contactsPagination.page === 1}
-                      >
-                        Previous
-                      </button>
-                    </li>
-                    
-                    {[...Array(contactsPagination.totalPages)].map((_, index) => (
-                      <li 
-                        key={index} 
-                        className={`page-item ${contactsPagination.page === index + 1 ? 'active' : ''}`}
-                      >
-                        <button
-                          className="page-link"
-                          onClick={() => handleContactsPageChange(index + 1)}
-                        >
-                          {index + 1}
-                        </button>
-                      </li>
-                    ))}
-                    
-                    <li className={`page-item ${contactsPagination.page === contactsPagination.totalPages ? 'disabled' : ''}`}>
-                      <button 
-                        className="page-link" 
-                        onClick={() => handleContactsPageChange(contactsPagination.page + 1)}
-                        disabled={contactsPagination.page === contactsPagination.totalPages}
-                      >
-                        Next
-                      </button>
-                    </li>
-                  </ul>
-                </nav>
-              )}
             </>
           )}
         </div>
