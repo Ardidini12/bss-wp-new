@@ -83,7 +83,9 @@ if (!fs.existsSync(salesSettingsFilePath)) {
     secondMessageDelay: 180,
     secondMessageDelayUnit: 'days',
     firstMessageTemplate: "Hello {{name}}, thank you for your purchase of {{amount}}. We appreciate your business!",
-    secondMessageTemplate: "Hello {{name}}, it's been a while since your purchase. How are you enjoying our product? We'd love to hear your feedback!"
+    firstMessageImages: [],
+    secondMessageTemplate: "Hello {{name}}, it's been a while since your purchase. How are you enjoying our product? We'd love to hear your feedback!",
+    secondMessageImages: []
   }));
 }
 
@@ -1549,6 +1551,13 @@ function getSalesSettings() {
       if (!settings.secondMessageDelayUnit) {
         settings.secondMessageDelayUnit = 'days';
       }
+      // Ensure image arrays are always included for backward compatibility
+      if (!settings.firstMessageImages) {
+        settings.firstMessageImages = [];
+      }
+      if (!settings.secondMessageImages) {
+        settings.secondMessageImages = [];
+      }
       resolve(settings);
     } catch (error) {
       console.error('Error getting sales settings:', error);
@@ -1559,7 +1568,9 @@ function getSalesSettings() {
         secondMessageDelay: 180,
         secondMessageDelayUnit: 'days',
         firstMessageTemplate: "Hello {{name}}, thank you for your purchase of {{amount}}. We appreciate your business!",
-        secondMessageTemplate: "Hello {{name}}, it's been a while since your purchase. How are you enjoying our product? We'd love to hear your feedback!"
+        firstMessageImages: [],
+        secondMessageTemplate: "Hello {{name}}, it's been a while since your purchase. How are you enjoying our product? We'd love to hear your feedback!",
+        secondMessageImages: []
       });
     }
   });
@@ -1659,6 +1670,32 @@ function scheduleSalesMessages(saleId, userId) {
       // Create message records
       const messagesData = readSalesScheduledMessages();
       
+            // Format phone number for international use
+      const formatPhoneNumber = (phone) => {
+        if (!phone) return '';
+        
+        // Remove all non-numeric characters except + at the beginning
+        let cleaned = phone.replace(/[^\d+]/g, '');
+        
+        // If it starts with +, remove it and keep the rest
+        if (cleaned.startsWith('+')) {
+          cleaned = cleaned.substring(1);
+        }
+        
+        // Remove any + signs that might be in the middle
+        cleaned = cleaned.replace(/\+/g, '');
+        
+        // If it starts with 00, remove it (international prefix)
+        if (cleaned.startsWith('00')) {
+          cleaned = cleaned.substring(2);
+        }
+        
+        // Return the cleaned number (should be in international format without + prefix)
+        return cleaned;
+      };
+
+      const formattedPhone = formatPhoneNumber(sale.businessEntity.phone);
+
       // First message
       const firstMessage = {
         id: messagesData.nextId++,
@@ -1666,9 +1703,10 @@ function scheduleSalesMessages(saleId, userId) {
         userId,
         messageNumber: 1,
         status: 'SCHEDULED',
-        phoneNumber: sale.businessEntity.phone,
+        phoneNumber: formattedPhone,
         customerName,
         messageContent: firstMessageContent,
+        messageImages: settings.firstMessageImages || [],
         scheduledTime: firstMessageTime.toISOString(),
         sentTime: null,
         deliveredTime: null,
@@ -1679,9 +1717,9 @@ function scheduleSalesMessages(saleId, userId) {
         dependentMessageId: null,
         scheduledDate: firstMessageTime.toDateString()
       };
-      
+
       messagesData.scheduledMessages.push(firstMessage);
-      
+
       // Second message (will be scheduled after first message is sent)
       const secondMessage = {
         id: messagesData.nextId++,
@@ -1689,9 +1727,10 @@ function scheduleSalesMessages(saleId, userId) {
         userId,
         messageNumber: 2,
         status: 'PENDING_FIRST_MESSAGE',
-        phoneNumber: sale.businessEntity.phone,
+        phoneNumber: formattedPhone,
         customerName,
         messageContent: secondMessageContent,
+        messageImages: settings.secondMessageImages || [],
         scheduledTime: null, // Will be set when first message is sent
         sentTime: null,
         deliveredTime: null,

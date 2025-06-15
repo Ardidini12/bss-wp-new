@@ -1135,13 +1135,63 @@ function setupSalesAPI(ipcMain) {
             try {
               console.log(`Attempting to send message ${message.id} to ${message.phoneNumber}`);
               
-              const sendResult = await global.mainWindow.webContents.executeJavaScript(`
-                window.electronAPI.sendWhatsAppMessage(
-                  ${activeUserId},
-                  "${message.phoneNumber}",
-                  "${message.messageContent.replace(/"/g, '\\"')}"
-                )
-              `);
+              let sendResult;
+              
+              // Check if message has images
+              if (message.messageImages && message.messageImages.length > 0) {
+                console.log(`Message ${message.id} has ${message.messageImages.length} images, using sendMessageWithMedia`);
+                
+                // Import WhatsApp service to send directly (avoid executeJavaScript issues with large data)
+                const { sendMessageWithMedia } = require('./whatsappService');
+                
+                // Send the first image with the text message
+                const firstImageMedia = {
+                  data: message.messageImages[0],
+                  mimetype: message.messageImages[0].split(';')[0].split(':')[1] || 'image/png',
+                  filename: 'image.png'
+                };
+                
+                // Send message with first image
+                sendResult = await sendMessageWithMedia(
+                  activeUserId,
+                  message.phoneNumber,
+                  message.messageContent,
+                  firstImageMedia
+                );
+                
+                // If there are multiple images, send the rest as separate media messages
+                if (sendResult.success && message.messageImages.length > 1) {
+                  console.log(`Sending ${message.messageImages.length - 1} additional images for message ${message.id}`);
+                  
+                  for (let i = 1; i < message.messageImages.length; i++) {
+                    const additionalMedia = {
+                      data: message.messageImages[i],
+                      mimetype: message.messageImages[i].split(';')[0].split(':')[1] || 'image/png',
+                      filename: `image${i + 1}.png`
+                    };
+                    
+                    // Send additional images without text (WhatsApp best practice)
+                    await sendMessageWithMedia(
+                      activeUserId,
+                      message.phoneNumber,
+                      '', // Empty text for additional images
+                      additionalMedia
+                    );
+                    
+                    // Small delay between multiple images to avoid rate limiting
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                  }
+                }
+              } else {
+                // Send text-only message using executeJavaScript (safe for text)
+                sendResult = await global.mainWindow.webContents.executeJavaScript(`
+                  window.electronAPI.sendWhatsAppMessage(
+                    ${activeUserId},
+                    "${message.phoneNumber}",
+                    "${message.messageContent.replace(/"/g, '\\"')}"
+                  )
+                `);
+              }
               
               if (sendResult && sendResult.success) {
                 console.log(`Message ${message.id} sent successfully with WhatsApp ID: ${sendResult.messageId}`);

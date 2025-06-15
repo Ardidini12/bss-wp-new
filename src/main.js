@@ -113,6 +113,14 @@ const createWindow = () => {
     global.mainWindow.webContents.openDevTools();
   }
   
+  // Add keyboard shortcut to open DevTools (Ctrl+Shift+I or F12)
+  global.mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.key === 'F12' || 
+        (input.key === 'I' && input.control && input.shift)) {
+      global.mainWindow.webContents.openDevTools();
+    }
+  });
+  
   // Show the window once it's ready
   global.mainWindow.once('ready-to-show', () => {
     global.mainWindow.show();

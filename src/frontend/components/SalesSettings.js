@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useTheme } from './ThemeContext';
 
 const SalesSettings = () => {
@@ -10,11 +10,14 @@ const SalesSettings = () => {
     secondMessageDelay: 180,
     secondMessageDelayUnit: 'days',
     firstMessageTemplate: "",
-    secondMessageTemplate: ""
+    firstMessageImages: [],
+    secondMessageTemplate: "",
+    secondMessageImages: []
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [error, setError] = useState('');
 
   // Load settings
   useEffect(() => {
@@ -31,10 +34,18 @@ const SalesSettings = () => {
           if (!loadedSettings.secondMessageDelayUnit) {
             loadedSettings.secondMessageDelayUnit = 'days';
           }
+          // Add image arrays if they don't exist
+          if (!loadedSettings.firstMessageImages) {
+            loadedSettings.firstMessageImages = [];
+          }
+          if (!loadedSettings.secondMessageImages) {
+            loadedSettings.secondMessageImages = [];
+          }
           setSettings(loadedSettings);
         }
       } catch (error) {
         console.error('Error loading sales settings:', error);
+        setError('Failed to load settings');
       } finally {
         setLoading(false);
       }
@@ -53,6 +64,78 @@ const SalesSettings = () => {
         type === 'number' ? parseInt(value, 10) : value
       )
     });
+    
+    // Clear any error messages when user types
+    if (error) setError('');
+  };
+
+  // Handle image upload for first or second message
+  const handleImageUpload = (e, messageType) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    // Check file type
+    if (!file.type.match('image.*')) {
+      setError('Please select an image file');
+      return;
+    }
+    
+    // Check file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      setError('Image size should be less than 5MB');
+      return;
+    }
+    
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const imageData = event.target.result;
+      
+      // Add image to the appropriate message type
+      setSettings(prev => ({
+        ...prev,
+        [messageType === 'first' ? 'firstMessageImages' : 'secondMessageImages']: [
+          ...prev[messageType === 'first' ? 'firstMessageImages' : 'secondMessageImages'],
+          imageData
+        ]
+      }));
+    };
+    reader.readAsDataURL(file);
+    
+    // Reset the input
+    e.target.value = '';
+  };
+
+  // Remove image from message template
+  const handleRemoveImage = (messageType, index) => {
+    setSettings(prev => ({
+      ...prev,
+      [messageType === 'first' ? 'firstMessageImages' : 'secondMessageImages']: 
+        prev[messageType === 'first' ? 'firstMessageImages' : 'secondMessageImages'].filter((_, i) => i !== index)
+    }));
+  };
+
+  // Format phone number for international use
+  const formatPhoneNumber = (phone) => {
+    if (!phone) return '';
+    
+    // Remove all non-numeric characters except + at the beginning
+    let cleaned = phone.replace(/[^\d+]/g, '');
+    
+    // If it starts with +, remove it and keep the rest
+    if (cleaned.startsWith('+')) {
+      cleaned = cleaned.substring(1);
+    }
+    
+    // Remove any + signs that might be in the middle
+    cleaned = cleaned.replace(/\+/g, '');
+    
+    // If it starts with 00, remove it (international prefix)
+    if (cleaned.startsWith('00')) {
+      cleaned = cleaned.substring(2);
+    }
+    
+    // Return the cleaned number (should be in international format without + prefix)
+    return cleaned;
   };
 
   // Convert delay to milliseconds based on unit
@@ -75,13 +158,17 @@ const SalesSettings = () => {
   const handleSave = async () => {
     try {
       setSaving(true);
+      setError('');
       
-      // Make sure to include the delay units in the saved settings
+      // Make sure to include all settings including images
       const settingsToSave = {
         ...settings,
-        // Keep the delay unit information in the saved settings
+        // Ensure delay units are included
         firstMessageDelayUnit: settings.firstMessageDelayUnit,
-        secondMessageDelayUnit: settings.secondMessageDelayUnit
+        secondMessageDelayUnit: settings.secondMessageDelayUnit,
+        // Include image data
+        firstMessageImages: settings.firstMessageImages || [],
+        secondMessageImages: settings.secondMessageImages || []
       };
       
       const response = await window.electronAPI.updateSalesSettings(settingsToSave);
@@ -89,9 +176,12 @@ const SalesSettings = () => {
       if (response.success) {
         setSaveSuccess(true);
         setTimeout(() => setSaveSuccess(false), 3000);
+      } else {
+        setError(response.error || 'Failed to save settings');
       }
     } catch (error) {
       console.error('Error saving settings:', error);
+      setError('Failed to save settings: ' + error.message);
     } finally {
       setSaving(false);
     }
@@ -240,6 +330,41 @@ const SalesSettings = () => {
                   {testTemplate(settings.firstMessageTemplate)}
                 </div>
               )}
+              
+              {/* Image upload for first message */}
+              <div className="mt-3">
+                <label className="form-label">Images for First Message</label>
+                <div className="d-flex flex-wrap gap-2 mb-2">
+                  {settings.firstMessageImages.map((image, index) => (
+                    <div key={index} className="position-relative">
+                      <img 
+                        src={image} 
+                        alt={`First message image ${index + 1}`}
+                        style={{ width: '80px', height: '80px', objectFit: 'cover' }}
+                        className="rounded border"
+                      />
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-danger position-absolute"
+                        style={{ top: '-5px', right: '-5px', width: '20px', height: '20px', padding: '0', fontSize: '12px' }}
+                        onClick={() => handleRemoveImage('first', index)}
+                        title="Remove image"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <input
+                  type="file"
+                  className="form-control"
+                  accept="image/*"
+                  onChange={(e) => handleImageUpload(e, 'first')}
+                />
+                <small className="text-muted">
+                  Select images to include with the first message (max 5MB each)
+                </small>
+              </div>
             </div>
           </div>
           <div className="col-md-6">
@@ -265,11 +390,51 @@ const SalesSettings = () => {
                   {testTemplate(settings.secondMessageTemplate)}
                 </div>
               )}
+              
+              {/* Image upload for second message */}
+              <div className="mt-3">
+                <label className="form-label">Images for Second Message</label>
+                <div className="d-flex flex-wrap gap-2 mb-2">
+                  {settings.secondMessageImages.map((image, index) => (
+                    <div key={index} className="position-relative">
+                      <img 
+                        src={image} 
+                        alt={`Second message image ${index + 1}`}
+                        style={{ width: '80px', height: '80px', objectFit: 'cover' }}
+                        className="rounded border"
+                      />
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-danger position-absolute"
+                        style={{ top: '-5px', right: '-5px', width: '20px', height: '20px', padding: '0', fontSize: '12px' }}
+                        onClick={() => handleRemoveImage('second', index)}
+                        title="Remove image"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <input
+                  type="file"
+                  className="form-control"
+                  accept="image/*"
+                  onChange={(e) => handleImageUpload(e, 'second')}
+                />
+                <small className="text-muted">
+                  Select images to include with the second message (max 5MB each)
+                </small>
+              </div>
             </div>
           </div>
         </div>
         
         <div className="d-flex justify-content-end">
+          {error && (
+            <div className="alert alert-danger me-3 mb-0 py-2">
+              {error}
+            </div>
+          )}
           {saveSuccess && (
             <div className="alert alert-success me-3 mb-0 py-2">
               Settings saved successfully!
