@@ -194,12 +194,26 @@ const SalesAPI = () => {
     }
   };
 
-  // Handle select all
-  const handleSelectAll = () => {
+  // Handle select all (across all pages)
+  const handleSelectAll = async () => {
     if (selectAll) {
       setSelectedSales([]);
     } else {
-      setSelectedSales(sales.map(sale => sale.id));
+      try {
+        const response = await window.electronAPI.getAllSalesIds(filters);
+        
+        if (response.success) {
+          setSelectedSales(response.salesIds);
+        } else {
+          console.error('Failed to get all sales IDs:', response.error);
+          // Fallback to current page only
+          setSelectedSales(sales.map(sale => sale.id));
+        }
+      } catch (error) {
+        console.error('Error selecting all sales:', error);
+        // Fallback to current page only
+        setSelectedSales(sales.map(sale => sale.id));
+      }
     }
     setSelectAll(!selectAll);
   };
@@ -412,11 +426,11 @@ const SalesAPI = () => {
           <thead>
             <tr>
               <th>
-                <input
-                  type="checkbox"
-                  checked={selectAll}
-                  onChange={handleSelectAll}
-                />
+                                      <input
+                        type="checkbox"
+                        checked={selectedSales.length > 0}
+                        onChange={handleSelectAll}
+                      />
               </th>
               <th>Document #</th>
               <th>Date</th>
@@ -496,21 +510,29 @@ const SalesAPI = () => {
           </button>
           
           <div className="d-flex align-items-center mx-2">
-            <span className="me-2">Page</span>
-            <input 
-              type="number" 
-              className="form-control form-control-sm" 
-              style={{ width: '60px' }}
-              value={pagination.page}
-              min={1}
-              max={pagination.totalPages}
-              onChange={(e) => {
-                const pageNum = parseInt(e.target.value);
-                if (!isNaN(pageNum) && pageNum >= 1 && pageNum <= pagination.totalPages) {
-                  handlePageChange(pageNum);
+            <span className="me-2">Go to page:</span>
+            <form 
+              onSubmit={(e) => {
+                e.preventDefault();
+                const page = parseInt(e.target.pageNumber.value);
+                if (page > 0 && page <= pagination.totalPages) {
+                  handlePageChange(page);
+                  e.target.pageNumber.value = '';
                 }
               }}
-            />
+              className="d-flex align-items-center"
+            >
+              <input 
+                type="number" 
+                name="pageNumber" 
+                className="form-control form-control-sm me-2" 
+                min="1" 
+                max={pagination.totalPages} 
+                placeholder="Page #"
+                style={{ width: '70px' }}
+              />
+              <button type="submit" className="btn btn-sm btn-outline-primary">Go</button>
+            </form>
             <span className="ms-2">of {pagination.totalPages}</span>
           </div>
           

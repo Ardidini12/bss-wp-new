@@ -774,6 +774,69 @@ function initApi() {
       };
     }
   });
+
+  // Get all scheduled message IDs for select all functionality (bulk sender)
+  ipcMain.handle('getAllScheduledMessageIds', async (event, userId, status) => {
+    try {
+      const db = require('./db');
+      const result = await db.getScheduledMessages(userId, 1, 99999, status); // Get all messages
+      
+      const messageIds = result.messages.map(message => message.id);
+      
+      return {
+        success: true,
+        messageIds: messageIds
+      };
+    } catch (error) {
+      console.error('Error getting all scheduled message IDs:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  });
+
+  // Get all sales scheduled message IDs for select all functionality
+  ipcMain.handle('getAllSalesScheduledMessageIds', async (event, filters) => {
+    try {
+      const db = require('./db');
+      const result = await db.getSalesScheduledMessages(1, 99999, filters, {}); // Get all messages
+      
+      const messageIds = result.messages.map(message => message.id);
+      
+      return {
+        success: true,
+        messageIds: messageIds
+      };
+    } catch (error) {
+      console.error('Error getting all sales scheduled message IDs:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  });
+
+  // Get all sales IDs for select all functionality
+  ipcMain.handle('getAllSalesIds', async (event, filters) => {
+    try {
+      const db = require('./db');
+      const result = await db.getSales(1, 99999, filters); // Get all sales
+      
+      const salesIds = result.sales.map(sale => sale.id);
+      
+      return {
+        success: true,
+        salesIds: salesIds
+      };
+    } catch (error) {
+      console.error('Error getting all sales IDs:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  });
 }
 
 // Sales API Service
@@ -782,28 +845,58 @@ function setupSalesAPI(ipcMain) {
   let salesFetchInterval = null;
   let lastFetchTime = null;
   
-  // Function to get authentication token
-  const getAuthToken = async () => {
+  // Function to get authentication token with retry logic
+  const getAuthToken = async (retryCount = 0) => {
+    const maxRetries = 3;
+    const retryDelay = 2000; // 2 seconds
+    
     try {
+      console.log(`Attempting to authenticate with sales API (attempt ${retryCount + 1}/${maxRetries + 1})`);
+      
       const response = await axios.post('https://crm-api.bss.com.al/authentication/login', {
         password: "T3aWy<[3dq07",
         userName: "Admin"
       }, {
         headers: {
           'Content-Type': 'application/json'
-        }
+        },
+        timeout: 30000, // 30 second timeout
       });
       
       // Extract token from response
       if (response.data && response.data.accessToken) {
+        console.log('Successfully authenticated with sales API');
         return response.data.accessToken;
       } else {
         console.error('Token not found in authentication response:', response.data);
         throw new Error('Authentication token not found in response');
       }
     } catch (error) {
-      console.error('Error getting auth token:', error);
-      throw new Error('Failed to authenticate with sales API');
+      console.error(`Authentication attempt ${retryCount + 1} failed:`, error.message);
+      
+      // Check if we should retry
+      const shouldRetry = (
+        (error.code === 'ETIMEDOUT' || error.code === 'ECONNABORTED' || error.code === 'ECONNREFUSED') &&
+        retryCount < maxRetries
+      );
+      
+      if (shouldRetry) {
+        console.log(`Retrying authentication in ${retryDelay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, retryDelay));
+        return getAuthToken(retryCount + 1);
+      }
+      
+      // Final error handling
+      if (error.code === 'ETIMEDOUT' || error.code === 'ECONNABORTED') {
+        console.error('Sales API connection timeout - server may be unreachable:', error.message);
+      } else if (error.code === 'ENOTFOUND') {
+        console.error('Sales API domain not found - DNS resolution failed:', error.message);
+      } else if (error.code === 'ECONNREFUSED') {
+        console.error('Sales API connection refused - server may be down:', error.message);
+      } else {
+        console.error('Error getting auth token:', error);
+      }
+      throw new Error(`Failed to authenticate with sales API after ${retryCount + 1} attempts: ${error.code || error.message}`);
     }
   };
   
@@ -814,57 +907,109 @@ function setupSalesAPI(ipcMain) {
       const today = new Date();
       const dateString = `${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getDate().toString().padStart(2, '0')}/${today.getFullYear()}`;
       
+      console.log(`Fetching sales for town: ${town} on date: ${dateString}`);
+      
       const response = await axios.get(`https://crm-api.bss.com.al/11120/Sales?Date=${dateString}&PageNumber=&PageSize=&HasPhone=true&CustomerGroup=PAKICE&Town=${town}`, {
         headers: {
-          'Authorization': `Bearer ${token}`
-        }
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 30000, // 30 second timeout
       });
       
+      console.log(`Successfully fetched ${Array.isArray(response.data) ? response.data.length : 0} sales records for ${town}`);
       return response.data;
     } catch (error) {
-      console.error(`Error fetching sales for town ${town}:`, error);
+      if (error.response && error.response.status === 401) {
+        console.error(`Authentication failed for town ${town} - token may be expired`);
+        throw new Error('Authentication token expired');
+      } else if (error.code === 'ETIMEDOUT') {
+        console.error(`Timeout fetching sales for town ${town}`);
+      } else {
+        console.error(`Error fetching sales for town ${town}:`, error.message);
+      }
       return [];
     }
   };
   
-  // Function to fetch sales for all towns
+  // Function to fetch sales for all towns with token refresh on failure
   const fetchAllSales = async () => {
-    try {
-      // Get auth token
-      const token = await getAuthToken();
-      
-      // Fetch sales for each town
-      const towns = ['tirane', 'fier', 'vlore'];
-      const allSalesPromises = towns.map(town => fetchSalesForTown(token, town));
-      const salesResults = await Promise.all(allSalesPromises);
-      
-      // Combine all sales
-      let allSales = [];
-      salesResults.forEach(result => {
-        if (Array.isArray(result)) {
-          allSales = [...allSales, ...result];
+    let attemptCount = 0;
+    const maxAttempts = 2;
+    
+    while (attemptCount < maxAttempts) {
+      try {
+        console.log(`Starting sales fetch process (attempt ${attemptCount + 1}/${maxAttempts})...`);
+        
+        // Get auth token
+        const token = await getAuthToken();
+        
+        // Fetch sales for each town
+        const towns = ['tirane', 'fier', 'vlore'];
+        console.log(`Fetching sales data for towns: ${towns.join(', ')}`);
+        
+        const allSalesPromises = towns.map(town => fetchSalesForTown(token, town));
+        const salesResults = await Promise.all(allSalesPromises);
+        
+        // Combine all sales
+        let allSales = [];
+        salesResults.forEach(result => {
+          if (Array.isArray(result)) {
+            allSales = [...allSales, ...result];
+          }
+        });
+        
+        console.log(`Successfully fetched ${allSales.length} sales records`);
+        
+        // Save new sales to database
+        const db = require('./db');
+        const saveResult = await db.saveSales(allSales);
+        
+        // Update last fetch time
+        lastFetchTime = saveResult.lastFetchTime;
+        
+        // Check if autoscheduler is enabled and schedule messages for new sales
+        await scheduleMessagesForNewSales(saveResult.newSales);
+        
+        return saveResult;
+        
+      } catch (error) {
+        attemptCount++;
+        
+        // Check if this is a token expiration error and we have more attempts
+        if (error.message.includes('Authentication token expired') && attemptCount < maxAttempts) {
+          console.log('Token expired, getting new token and retrying...');
+          continue;
         }
-      });
-      
-      // Save new sales to database
-      const db = require('./db');
-      const saveResult = await db.saveSales(allSales);
-      
-      // Update last fetch time
-      lastFetchTime = saveResult.lastFetchTime;
-      
-      // Check if autoscheduler is enabled and schedule messages for new sales
-      await scheduleMessagesForNewSales(saveResult.newSales);
-      
-      return saveResult;
-    } catch (error) {
-      console.error('Error fetching all sales:', error);
-      return {
-        error: error.message,
-        newSalesCount: 0,
-        newSales: []
-      };
+        
+        // More detailed error logging based on error type
+        if (error.message.includes('Failed to authenticate')) {
+          console.error('Sales fetch failed due to authentication error:', error.message);
+          console.error('This usually indicates:');
+          console.error('- Network connectivity issues');
+          console.error('- Sales API server is down or unreachable');
+          console.error('- Firewall blocking the connection');
+          console.error('- DNS resolution problems');
+        } else {
+          console.error('Error fetching all sales:', error);
+        }
+        
+        return {
+          error: error.message,
+          newSalesCount: 0,
+          newSales: [],
+          timestamp: new Date().toISOString()
+        };
+      }
     }
+    
+    // This should not be reached, but just in case
+    return {
+      error: 'Max attempts reached',
+      newSalesCount: 0,
+      newSales: [],
+      timestamp: new Date().toISOString()
+    };
   };
   
   // Function to schedule messages for new sales

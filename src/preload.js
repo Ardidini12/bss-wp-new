@@ -89,6 +89,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // Scheduled message operations
   getScheduledMessages: (userId, page, limit, status) => ipcRenderer.invoke('get-scheduled-messages', userId, page, limit, status),
+  getAllScheduledMessageIds: (userId, status) => ipcRenderer.invoke('getAllScheduledMessageIds', userId, status),
   cancelScheduledMessage: (messageId) => ipcRenderer.invoke('cancel-scheduled-message', messageId),
   deleteScheduledMessages: (messageIds) => ipcRenderer.invoke('delete-scheduled-messages', messageIds),
   
@@ -97,6 +98,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // Sales API
   getSales: (page, limit, filters) => ipcRenderer.invoke('getSales', page, limit, filters),
+  getAllSalesIds: (filters) => ipcRenderer.invoke('getAllSalesIds', filters),
   updateSale: (saleId, saleData) => ipcRenderer.invoke('updateSale', saleId, saleData),
   deleteSales: (saleIds) => ipcRenderer.invoke('deleteSales', saleIds),
   getLastFetchTime: () => ipcRenderer.invoke('getLastFetchTime'),
@@ -109,6 +111,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   updateSalesSettings: (settings) => ipcRenderer.invoke('updateSalesSettings', settings),
   getSalesScheduledMessages: (page, limit, filters) => 
     ipcRenderer.invoke('getSalesScheduledMessages', page, limit, filters),
+  getAllSalesScheduledMessageIds: (filters) => 
+    ipcRenderer.invoke('getAllSalesScheduledMessageIds', filters),
   cancelSalesScheduledMessage: (messageId) => 
     ipcRenderer.invoke('cancelSalesScheduledMessage', messageId),
   deleteSalesScheduledMessages: (messageIds) => 

@@ -400,12 +400,39 @@ const SalesScheduledMessages = () => {
     }
   };
 
-  // Handle select all
-  const handleSelectAll = () => {
-    if (selectedMessages.length === messages.length) {
+  // Handle select all messages (across all pages)
+  const handleSelectAll = async () => {
+    if (selectedMessages.length > 0) {
+      // If some are selected, deselect all
       setSelectedMessages([]);
+      setSelectAll(false);
     } else {
-      setSelectedMessages(messages.map(msg => msg.id));
+      // Select all messages across all pages
+      try {
+        const response = await window.electronAPI.getAllSalesScheduledMessageIds(filters);
+        
+        if (response.success) {
+          setSelectedMessages(response.messageIds);
+          setSelectAll(true);
+          setSnackbar({
+            open: true,
+            message: `Selected all ${response.messageIds.length} messages`,
+            severity: 'success'
+          });
+        } else {
+          setSnackbar({
+            open: true,
+            message: response.error || 'Failed to get all messages',
+            severity: 'error'
+          });
+        }
+      } catch (error) {
+        setSnackbar({
+          open: true,
+          message: 'Error selecting all messages: ' + error.message,
+          severity: 'error'
+        });
+      }
     }
   };
 
@@ -650,6 +677,8 @@ const SalesScheduledMessages = () => {
     maintainAspectRatio: false
   };
 
+
+
   return (
     <div className="card dashboard-card" style={{ marginBottom: '1rem' }}>
       <div className="card-body">
@@ -854,7 +883,7 @@ const SalesScheduledMessages = () => {
                 <th>
                   <input
                     type="checkbox"
-                    checked={selectedMessages.length > 0 && selectedMessages.length === messages.length}
+                    checked={selectedMessages.length > 0}
                     onChange={handleSelectAll}
                   />
                 </th>
@@ -989,9 +1018,38 @@ const SalesScheduledMessages = () => {
         
         {/* Pagination */}
         {pagination.totalPages > 1 && (
-          <div className="d-flex justify-content-center mt-3">
+          <div className="d-flex justify-content-between align-items-center mt-3">
+                         <div className="d-flex align-items-center">
+               <span className="me-2">Go to page:</span>
+               <form 
+                 onSubmit={(e) => {
+                   e.preventDefault();
+                   const page = parseInt(e.target.pageNumber.value);
+                   if (page > 0 && page <= pagination.totalPages) {
+                     handlePageChange(page);
+                     e.target.pageNumber.value = '';
+                   }
+                 }}
+                 className="d-flex align-items-center"
+               >
+                 <input 
+                   type="number" 
+                   name="pageNumber" 
+                   className="form-control form-control-sm me-2" 
+                   min="1" 
+                   max={pagination.totalPages} 
+                   placeholder="Page #"
+                   style={{ width: '70px' }}
+                 />
+                 <button type="submit" className="btn btn-sm btn-outline-primary me-2">Go</button>
+               </form>
+               <span className="text-muted">
+                 (Page {pagination.page} of {pagination.totalPages})
+               </span>
+             </div>
+            
             <nav aria-label="Message pagination">
-              <ul className="pagination">
+              <ul className="pagination pagination-sm mb-0">
                 <li className={`page-item ${pagination.page === 1 ? 'disabled' : ''}`}>
                   <button
                     className="page-link"
@@ -1009,12 +1067,6 @@ const SalesScheduledMessages = () => {
                   >
                     &lt;
                   </button>
-                </li>
-                
-                <li className="page-item disabled">
-                  <span className="page-link">
-                    Page {pagination.page} of {pagination.totalPages}
-                  </span>
                 </li>
                 
                 <li className={`page-item ${pagination.page === pagination.totalPages ? 'disabled' : ''}`}>

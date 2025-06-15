@@ -629,12 +629,29 @@ const BulkSender = () => {
     });
   };
   
-  // Handle selecting all scheduled messages
-  const toggleSelectAllScheduledMessages = () => {
-    if (selectedScheduledMessages.length === scheduledMessages.length) {
+  // Handle selecting all scheduled messages (across all pages)
+  const toggleSelectAllScheduledMessages = async () => {
+    if (selectedScheduledMessages.length > 0) {
+      // If some are selected, deselect all
       setSelectedScheduledMessages([]);
     } else {
-      setSelectedScheduledMessages(scheduledMessages.map(message => message.id));
+      // Select all messages across all pages
+      try {
+        const response = await window.electronAPI.getAllScheduledMessageIds(
+          currentUser.id,
+          scheduledMessagesStatus
+        );
+        
+        if (response.success) {
+          setSelectedScheduledMessages(response.messageIds);
+          setSuccessMessage(`Selected all ${response.messageIds.length} messages`);
+          setTimeout(() => setSuccessMessage(''), 3000);
+        } else {
+          setError(response.error || 'Failed to get all messages');
+        }
+      } catch (error) {
+        setError('Error selecting all messages: ' + error.message);
+      }
     }
   };
   
@@ -763,6 +780,8 @@ const BulkSender = () => {
   useEffect(() => {
     loadMessageStats();
   }, [loadMessageStats]);
+  
+
   
   // Render the settings panel
   const renderSettingsPanel = () => {
@@ -1218,7 +1237,7 @@ const BulkSender = () => {
                           <input
                             type="checkbox"
                             className="form-check-input"
-                            checked={selectedScheduledMessages.length === scheduledMessages.length && scheduledMessages.length > 0}
+                            checked={selectedScheduledMessages.length > 0}
                             onChange={toggleSelectAllScheduledMessages}
                           />
                         </div>
@@ -1298,43 +1317,78 @@ const BulkSender = () => {
               
               {/* Pagination */}
               {scheduledMessagesPagination.totalPages > 1 && (
-                <nav aria-label="Scheduled messages pagination" className="mt-3">
-                  <ul className="pagination justify-content-center">
-                    <li className={`page-item ${scheduledMessagesPagination.page === 1 ? 'disabled' : ''}`}>
-                      <button 
-                        className="page-link" 
-                        onClick={() => handleScheduledMessagesPageChange(scheduledMessagesPagination.page - 1)}
-                        disabled={scheduledMessagesPagination.page === 1}
-                      >
-                        Previous
-                      </button>
-                    </li>
-                    
-                    {[...Array(scheduledMessagesPagination.totalPages)].map((_, index) => (
-                      <li 
-                        key={index} 
-                        className={`page-item ${scheduledMessagesPagination.page === index + 1 ? 'active' : ''}`}
-                      >
-                        <button
-                          className="page-link"
-                          onClick={() => handleScheduledMessagesPageChange(index + 1)}
+                <div className="d-flex justify-content-between align-items-center mt-3">
+                  <div className="d-flex align-items-center">
+                    <span className="me-2">Go to page:</span>
+                    <form 
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        const page = parseInt(e.target.pageNumber.value);
+                        if (page > 0 && page <= scheduledMessagesPagination.totalPages) {
+                          handleScheduledMessagesPageChange(page);
+                          e.target.pageNumber.value = '';
+                        }
+                      }}
+                      className="d-flex align-items-center"
+                    >
+                      <input 
+                        type="number" 
+                        name="pageNumber" 
+                        className="form-control form-control-sm me-2" 
+                        min="1" 
+                        max={scheduledMessagesPagination.totalPages} 
+                        placeholder="Page #"
+                        style={{ width: '70px' }}
+                      />
+                      <button type="submit" className="btn btn-sm btn-outline-primary me-2">Go</button>
+                    </form>
+                    <span className="text-muted">
+                      (Page {scheduledMessagesPagination.page} of {scheduledMessagesPagination.totalPages})
+                    </span>
+                  </div>
+                  
+                  <nav aria-label="Scheduled messages pagination">
+                    <ul className="pagination pagination-sm mb-0">
+                      <li className={`page-item ${scheduledMessagesPagination.page === 1 ? 'disabled' : ''}`}>
+                        <button 
+                          className="page-link" 
+                          onClick={() => handleScheduledMessagesPageChange(1)}
+                          disabled={scheduledMessagesPagination.page === 1}
                         >
-                          {index + 1}
+                          &laquo;
                         </button>
                       </li>
-                    ))}
-                    
-                    <li className={`page-item ${scheduledMessagesPagination.page === scheduledMessagesPagination.totalPages ? 'disabled' : ''}`}>
-                      <button 
-                        className="page-link" 
-                        onClick={() => handleScheduledMessagesPageChange(scheduledMessagesPagination.page + 1)}
-                        disabled={scheduledMessagesPagination.page === scheduledMessagesPagination.totalPages}
-                      >
-                        Next
-                      </button>
-                    </li>
-                  </ul>
-                </nav>
+                      <li className={`page-item ${scheduledMessagesPagination.page === 1 ? 'disabled' : ''}`}>
+                        <button 
+                          className="page-link" 
+                          onClick={() => handleScheduledMessagesPageChange(scheduledMessagesPagination.page - 1)}
+                          disabled={scheduledMessagesPagination.page === 1}
+                        >
+                          &lt;
+                        </button>
+                      </li>
+                      
+                      <li className={`page-item ${scheduledMessagesPagination.page === scheduledMessagesPagination.totalPages ? 'disabled' : ''}`}>
+                        <button 
+                          className="page-link" 
+                          onClick={() => handleScheduledMessagesPageChange(scheduledMessagesPagination.page + 1)}
+                          disabled={scheduledMessagesPagination.page === scheduledMessagesPagination.totalPages}
+                        >
+                          &gt;
+                        </button>
+                      </li>
+                      <li className={`page-item ${scheduledMessagesPagination.page === scheduledMessagesPagination.totalPages ? 'disabled' : ''}`}>
+                        <button 
+                          className="page-link" 
+                          onClick={() => handleScheduledMessagesPageChange(scheduledMessagesPagination.totalPages)}
+                          disabled={scheduledMessagesPagination.page === scheduledMessagesPagination.totalPages}
+                        >
+                          &raquo;
+                        </button>
+                      </li>
+                    </ul>
+                  </nav>
+                </div>
               )}
             </>
           )}
